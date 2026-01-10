@@ -1,0 +1,7 @@
+# Razorpay Payment Gateway Integration
+razorpay==1.4.1
+
+# Add this to your main requirements.txt or install separately:
+# pip install razorpay
+
+

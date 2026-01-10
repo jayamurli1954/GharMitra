@@ -1,0 +1,305 @@
+Great — I have used **your uploaded CR template** and prepared a **fully-filled Change Request** for the new **“Expense For Month (Month-Tagged Cash Accounting)”** model in **GharMitra**.
+
+Below is the CR in your exact structure.
+
+---
+
+# **CHANGE REQUEST (CR)**
+
+*(Based on your uploaded CR Template )*
+
+---
+
+## **CR ID:** CR-2026-01-08-001
+
+**Project:** GharMitra – Housing Society Accounting System
+**Submitted By:** Muralidhar Rao (Product Owner)
+**Date Submitted:** 08-Jan-2026
+**Priority:** High
+**Type:** Business Requirement Change
+**Status:** Submitted
+
+---
+
+## **1. CHANGE SUMMARY**
+
+### **Current Situation**
+
+GharMitra currently expects expenses to be recorded against the actual transaction date.
+If December expenses are paid in January, they get booked in January, causing:
+
+* Wrong December maintenance bills
+* Incorrect income & expense reports
+* Mismatch between cash flow and billing
+
+This creates problems especially for small housing societies where:
+
+* Vendors are not maintained
+* Accrual accounting is not followed
+* Payments are mostly “cash and carry”
+
+---
+
+### **Requested Change**
+
+Introduce a **mandatory “Expense For Month” field** in all expense and payment entries.
+
+This will allow users to:
+
+* Record when the expense was **paid**
+* Specify which **month the expense belongs to**
+* Generate accurate maintenance bills and reports without using accrual accounting
+
+---
+
+### **Reason for Change**
+
+☑ User feedback
+☑ Business requirement change
+☑ Data integrity issue
+
+Small housing societies (<50 flats) need a simple way to correctly allocate expenses without complex accounting.
+
+---
+
+### **Urgency Level**
+
+**High** — Incorrect month allocation directly impacts billing, collections, and audit.
+
+---
+
+## **2. IMPACT ANALYSIS**
+
+### **2.1 Business Impact**
+
+**Positive Effects**
+
+* Accurate monthly maintenance bills
+* Correct income & expense reports
+* Reduced disputes with flat owners
+* Much simpler system for small societies
+
+**Negative Effects**
+
+* One extra field during expense entry
+* Minor UI change
+
+**Business Metrics Affected**
+
+* Revenue impact: Reduced billing disputes, better collections
+* Cost impact: Minimal development cost
+* Productivity impact: Faster billing and reconciliation
+
+---
+
+### **2.2 Technical Impact**
+
+**Systems Affected**
+
+* ☑ Frontend UI
+* ☑ Backend API
+* ☑ Database
+* ☑ Reports
+* ☐ Third-party integrations
+* ☑ Documentation
+
+**Dependencies**
+
+* Expense entry screens
+* Maintenance bill generation
+* Income & Expense reports
+
+**Performance Impact**
+Negligible (simple date filter)
+
+---
+
+### **2.3 User Impact**
+
+**Users Affected**
+
+* Society Admin
+* Treasurer
+* Billing Clerk
+
+**Workflow Changes**
+Users must select **“Expense For Month”** while entering any expense.
+
+**Training Required**
+Minimal – one tooltip or help message.
+
+**Communication Plan**
+In-app notification + short help text on expense screen.
+
+---
+
+## **3. DETAILED REQUIREMENTS**
+
+### **3.1 Functional Changes**
+
+**FC-1: Expense Month Tagging**
+
+* Input: Payment Date, Expense Type, Amount, **Expense For Month**
+* Validation: Expense For Month must be selected
+* Output: Expense recorded with both payment date and expense month
+* Used by: Billing engine, P&L, monthly reports
+
+**FC-2: Monthly Bill Generation**
+
+* Input: Selected billing month
+* Process: Sum all expenses where `expense_month = selected month`
+* Output: Accurate maintenance bills
+
+---
+
+### **3.2 Non-Functional Changes**
+
+**Usability**
+
+* Simple dropdown: “Expense For Month”
+* Default = current month
+* Mandatory selection
+
+**Data Integrity**
+
+* Billing and reports must always use `expense_month`, not transaction date
+
+---
+
+## **4. IMPLEMENTATION DETAILS**
+
+### **4.1 Technical Specifications**
+
+**Files / Modules to Modify**
+
+* Expense entry UI
+* Payment entry UI
+* Backend expense API
+* Maintenance billing logic
+* Monthly P&L reports
+
+**Database Changes**
+
+```sql
+ALTER TABLE expenses 
+ADD COLUMN expense_month DATE NOT NULL;
+```
+
+---
+
+### **4.2 Configuration Changes**
+
+No environment variables required.
+
+---
+
+## **5. TESTING REQUIREMENTS**
+
+### **5.1 Test Strategy**
+
+**Unit Testing**
+
+* Validate expense_month is mandatory
+* Ensure expenses are filtered by expense_month
+
+**Integration Testing**
+
+* Expense entry → Billing → Reports
+
+**User Acceptance Testing**
+
+* December expense paid in January must appear in December bill
+
+---
+
+### **5.2 Test Cases**
+
+**Positive**
+
+* Enter Jan payment with Dec expense_month → appears in December bill
+
+**Negative**
+
+* Try saving expense without expense_month → blocked
+
+---
+
+## **6. RISK ASSESSMENT**
+
+| Risk                     | Impact | Probability | Mitigation                               |
+| ------------------------ | ------ | ----------- | ---------------------------------------- |
+| User selects wrong month | Medium | Medium      | Show reminder & default to current month |
+| Report mismatch          | High   | Low         | Enforce using expense_month everywhere   |
+
+---
+
+## **7. IMPLEMENTATION PLAN**
+
+**Phase 1 – Design**
+
+* UI update
+* API change
+
+**Phase 2 – Development**
+
+* DB change
+* Billing logic update
+
+**Phase 3 – Testing**
+
+* Month-based billing validation
+
+**Phase 4 – Deployment**
+
+* Production release
+* User notification
+
+---
+
+## **8. ROLLBACK PLAN**
+
+If any billing error:
+
+* Revert code
+* Restore DB backup
+* Disable expense_month logic
+
+---
+
+## **9. SUCCESS CRITERIA**
+
+* December bills match December expenses
+* No billing disputes
+* Reports match CA audit
+
+---
+
+## **10. MONITORING**
+
+* Track mismatch between payment date and expense month
+* Monitor billing accuracy
+
+---
+
+## **11. POST-IMPLEMENTATION REVIEW**
+
+After 1 month:
+
+* Check billing accuracy
+* Collect society feedback
+
+---
+
+## **12. APPROVALS**
+
+(To be signed)
+
+---
+
+## **13. CHANGE LOG**
+
+| Date        | Version | Changes    | Author         | Status    |
+| ----------- | ------- | ---------- | -------------- | --------- |
+| 08-Jan-2026 | 1.0     | Initial CR | Muralidhar Rao | Submitted |
+
+---

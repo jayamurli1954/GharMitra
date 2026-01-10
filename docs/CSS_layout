@@ -1,0 +1,65 @@
+/* Mobile App Layout */
+@media (max-width: 768px) {
+  body {
+    font-family: system-ui;
+    margin: 0;
+    background: #f4f6fb;
+  }
+
+  .app-header {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    height: 56px;
+    background: #1e3a8a;
+    color: white;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    z-index: 10;
+  }
+
+  .app-content {
+    padding-top: 60px;
+    padding-bottom: 60px;
+  }
+
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    height: 56px;
+    background: white;
+    display: flex;
+    border-top: 1px solid #ddd;
+  }
+
+  .bottom-nav a {
+    flex: 1;
+    text-align: center;
+    padding-top: 8px;
+    font-size: 12px;
+    color: #555;
+    text-decoration: none;
+  }
+
+  .bottom-nav a.active {
+    color: #1e3a8a;
+    font-weight: bold;
+  }
+
+  .card {
+    background: white;
+    margin: 10px;
+    padding: 15px;
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  }
+
+  button {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 10px;
+  }
+}

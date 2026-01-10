@@ -1,0 +1,2952 @@
+/**
+ * GharMitra Settings Screen
+ * Master control panel with 14 sub-modules
+ */
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import settingsService from '../services/settingsService';
+import flatsService from '../services/flatsService';
+import memberOnboardingService from '../services/memberOnboardingService';
+import api from '../services/api';
+
+// Helper function to safely extract error message from API errors
+const getErrorMessage = (error) => {
+  if (error.response?.data?.detail) {
+    const detail = error.response.data.detail;
+    if (Array.isArray(detail)) {
+      // Pydantic validation errors - extract messages
+      return detail.map(err => {
+        if (typeof err === 'string') return err;
+        if (typeof err === 'object' && err.msg) return err.msg;
+        if (typeof err === 'object' && err.message) return err.message;
+        return JSON.stringify(err);
+      }).join(', ');
+    } else if (typeof detail === 'string') {
+      return detail;
+    } else if (typeof detail === 'object') {
+      return detail.msg || detail.message || 'Validation error occurred';
+    }
+  }
+  if (error.message) {
+    return error.message;
+  }
+  return 'An error occurred. Please try again.';
+};
+
+const SettingsScreen = () => {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('society-profile');
+
+  const settingsTabs = [
+    { id: 'society-profile', label: '🏢 Society Profile', icon: '🏢' },
+    { id: 'flats-blocks', label: '🏠 Flats & Blocks', icon: '🏠' },
+    { id: 'member-config', label: '👥 Member Configuration', icon: '👥' },
+    { id: 'billing-rules', label: '🧾 Billing Rules', icon: '🧾' },
+    { id: 'late-fee', label: '⏳ Late Fee & Penalties', icon: '⏳' },
+    { id: 'accounting', label: '💰 Accounting Settings', icon: '💰' },
+    { id: 'payment-gateway', label: '💳 Payment Gateway', icon: '💳' },
+    { id: 'notifications', label: '🔔 Notifications', icon: '🔔' },
+    { id: 'roles', label: '🔐 Roles & Permissions', icon: '🔐' },
+    { id: 'complaints', label: '🛠️ Complaints & Helpdesk', icon: '🛠️' },
+    { id: 'assets', label: '🏗️ Assets & Vendors', icon: '🏗️' },
+    { id: 'legal', label: '⚖️ Legal & Compliance', icon: '⚖️' },
+    { id: 'data-security', label: '🔒 Data & Security', icon: '🔒' },
+    { id: 'multi-society', label: '🌐 Multi-Society Mode', icon: '🌐' },
+  ];
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'society-profile':
+        return <SocietyProfileTab />;
+      case 'flats-blocks':
+        return <FlatsBlocksTab />;
+      case 'member-config':
+        return <MemberConfigTab />;
+      case 'billing-rules':
+        return <BillingRulesTab />;
+      case 'late-fee':
+        return <LateFeeTab />;
+      case 'accounting':
+        return <AccountingTab />;
+      case 'payment-gateway':
+        return <PaymentGatewayTab />;
+      case 'notifications':
+        return <NotificationsTab />;
+      case 'roles':
+        return <RolesTab />;
+      case 'complaints':
+        return <ComplaintsTab />;
+      case 'assets':
+        return <AssetsTab />;
+      case 'legal':
+        return <LegalTab />;
+      case 'data-security':
+        return <DataSecurityTab />;
+      case 'multi-society':
+        return <MultiSocietyTab />;
+      default:
+        return <SocietyProfileTab />;
+    }
+  };
+
+  return (
+    <div className="dashboard-container">
+      {/* Header */}
+      <div className="dashboard-header">
+        <div className="dashboard-header-left">
+          <h1 className="dashboard-header-title">⚙️ Settings</h1>
+          <span className="dashboard-header-subtitle">Master Control Panel</span>
+        </div>
+        <div className="dashboard-header-right">
+          <button onClick={() => navigate('/dashboard')} className="dashboard-logout-button">
+            ← Back to Dashboard
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-container">
+        {/* Sidebar Navigation */}
+        <div className="settings-sidebar">
+          <div className="settings-sidebar-header">
+            <h3>Settings Menu</h3>
+          </div>
+          <nav className="settings-nav">
+            {settingsTabs.map((tab) => (
+              <button
+                key={tab.id}
+                className={`settings-nav-item ${activeTab === tab.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <span className="settings-nav-icon">{tab.icon}</span>
+                <span className="settings-nav-label">{tab.label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="settings-content">
+          {renderTabContent()}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Tab Components
+const SocietyProfileTab = () => {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    society_name: '',
+    registration_number: '',
+    registration_date: '',
+    pan: '',
+    gst_number: '',
+    address: '',
+    city: '',
+    state: '',
+    pin_code: '',
+    contact_email: '',
+    contact_phone: '',
+    bank_account_number: '',
+    bank_ifsc: '',
+    bank_name: '',
+    financial_year_start: 'apr-mar',
+  });
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    setLoading(true);
+    try {
+      const settings = await settingsService.getSocietySettings();
+      if (settings) {
+        setFormData({
+          society_name: settings.society_name || '',
+          registration_number: settings.registration_number || '',
+          registration_date: '', // Not in API response
+          pan: '', // Not in API response
+          gst_number: settings.gst_number || '',
+          address: settings.society_address || '',
+          city: settings.city || '',
+          state: settings.state || '',
+          pin_code: settings.pincode || '',
+          contact_email: '', // Not in API response
+          contact_phone: '', // Not in API response
+          bank_account_number: '', // Will need to parse from bank_accounts
+          bank_ifsc: '',
+          bank_name: '',
+          financial_year_start: 'apr-mar',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+      setMessage({ type: 'error', text: 'Failed to load settings. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    
+    if (!formData.society_name.trim()) {
+      setMessage({ type: 'error', text: 'Society Name is required' });
+      return;
+    }
+
+    setSaving(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      const settingsData = {
+        society_name: formData.society_name.trim(),
+        registration_number: formData.registration_number.trim() || undefined,
+        society_address: formData.address.trim() || undefined,
+        city: formData.city.trim() || undefined,
+        state: formData.state.trim() || undefined,
+        pin_code: formData.pin_code.trim() || undefined,
+        gst_number: formData.gst_number.trim() || undefined,
+      };
+
+      // Add bank account if provided
+      if (formData.bank_account_number || formData.bank_ifsc || formData.bank_name) {
+        settingsData.bank_accounts = [{
+          account_number: formData.bank_account_number.trim(),
+          ifsc_code: formData.bank_ifsc.trim(),
+          bank_name: formData.bank_name.trim(),
+        }];
+      }
+
+      await settingsService.saveSocietySettings(settingsData);
+      setMessage({ type: 'success', text: 'Society profile saved successfully!' });
+      
+      // Clear message after 3 seconds
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      const errorMsg = getErrorMessage(error) || 'Failed to save settings. Please try again.';
+      setMessage({ type: 'error', text: errorMsg });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="settings-tab-content">
+        <h2 className="settings-tab-title">🏢 Society Profile</h2>
+        <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+          Loading society profile...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">🏢 Society Profile</h2>
+      <p className="settings-tab-description">Basic legal & identity information</p>
+      
+      {/* Success/Error Message */}
+      {message.text && (
+        <div style={{
+          padding: '12px 16px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FFEBEE',
+          color: message.type === 'success' ? '#2E7D32' : '#C62828',
+          border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#EF5350'}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <span>{message.type === 'success' ? '✓' : '✗'}</span>
+          <span>{message.text}</span>
+        </div>
+      )}
+      
+      <form className="settings-form" onSubmit={handleSave}>
+        <div className="settings-form-group">
+          <label>Society Name *</label>
+          <input 
+            type="text" 
+            placeholder="Enter society name" 
+            value={formData.society_name}
+            onChange={(e) => setFormData(prev => ({ ...prev, society_name: e.target.value }))}
+            required
+          />
+        </div>
+
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>Registration Number</label>
+            <input 
+              type="text" 
+              placeholder="Registration number" 
+              value={formData.registration_number}
+              onChange={(e) => setFormData(prev => ({ ...prev, registration_number: e.target.value }))}
+            />
+          </div>
+          <div className="settings-form-group">
+            <label>Registration Date</label>
+            <input 
+              type="date" 
+              value={formData.registration_date}
+              onChange={(e) => setFormData(prev => ({ ...prev, registration_date: e.target.value }))}
+            />
+          </div>
+        </div>
+
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>PAN</label>
+            <input 
+              type="text" 
+              placeholder="PAN number" 
+              maxLength="10"
+              value={formData.pan}
+              onChange={(e) => setFormData(prev => ({ ...prev, pan: e.target.value.toUpperCase() }))}
+            />
+          </div>
+          <div className="settings-form-group">
+            <label>GST (if applicable)</label>
+            <input 
+              type="text" 
+              placeholder="GST number" 
+              value={formData.gst_number}
+              onChange={(e) => setFormData(prev => ({ ...prev, gst_number: e.target.value.toUpperCase() }))}
+            />
+          </div>
+        </div>
+
+        <div className="settings-form-group">
+          <label>Address</label>
+          <textarea 
+            rows="3" 
+            placeholder="Complete address"
+            value={formData.address}
+            onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+          ></textarea>
+        </div>
+
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>City</label>
+            <input 
+              type="text" 
+              placeholder="City" 
+              value={formData.city}
+              onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+            />
+          </div>
+          <div className="settings-form-group">
+            <label>State</label>
+            <input 
+              type="text" 
+              placeholder="State" 
+              value={formData.state}
+              onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+            />
+          </div>
+          <div className="settings-form-group">
+            <label>PIN Code</label>
+            <input 
+              type="text" 
+              placeholder="PIN" 
+              maxLength="6"
+              value={formData.pin_code}
+              onChange={(e) => setFormData(prev => ({ ...prev, pin_code: e.target.value }))}
+            />
+          </div>
+        </div>
+
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>Contact Email</label>
+            <input 
+              type="email" 
+              placeholder="society@example.com" 
+              value={formData.contact_email}
+              onChange={(e) => setFormData(prev => ({ ...prev, contact_email: e.target.value }))}
+            />
+          </div>
+          <div className="settings-form-group">
+            <label>Contact Phone</label>
+            <input 
+              type="tel" 
+              placeholder="+91 9876543210" 
+              value={formData.contact_phone}
+              onChange={(e) => setFormData(prev => ({ ...prev, contact_phone: e.target.value }))}
+            />
+          </div>
+        </div>
+
+        <div className="settings-form-group">
+          <label>Bank Account Details</label>
+          <div className="settings-form-row">
+            <input 
+              type="text" 
+              placeholder="Account Number" 
+              value={formData.bank_account_number}
+              onChange={(e) => setFormData(prev => ({ ...prev, bank_account_number: e.target.value }))}
+            />
+            <input 
+              type="text" 
+              placeholder="IFSC Code" 
+              value={formData.bank_ifsc}
+              onChange={(e) => setFormData(prev => ({ ...prev, bank_ifsc: e.target.value.toUpperCase() }))}
+            />
+            <input 
+              type="text" 
+              placeholder="Bank Name" 
+              value={formData.bank_name}
+              onChange={(e) => setFormData(prev => ({ ...prev, bank_name: e.target.value }))}
+            />
+          </div>
+        </div>
+
+        <div className="settings-form-group">
+          <label>Society Logo</label>
+          <input type="file" accept="image/*" />
+          <small>Upload society logo (PNG, JPG, max 2MB)</small>
+        </div>
+
+        <div className="settings-form-group">
+          <label>Financial Year Start</label>
+          <select 
+            value={formData.financial_year_start}
+            onChange={(e) => setFormData(prev => ({ ...prev, financial_year_start: e.target.value }))}
+          >
+            <option value="apr-mar">April - March</option>
+            <option value="jan-dec">January - December</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+
+        <div className="settings-form-actions">
+          <button 
+            type="submit"
+            className="settings-save-btn"
+            disabled={saving}
+            style={{ opacity: saving ? 0.6 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+          <button 
+            type="button"
+            className="settings-cancel-btn"
+            onClick={() => loadSettings()}
+            disabled={saving}
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const FlatsBlocksTab = () => {
+  const [flats, setFlats] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [debugMessages, setDebugMessages] = useState([]);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [blocksConfig, setBlocksConfig] = useState([]);
+  const [editingBlock, setEditingBlock] = useState(null);
+  
+  const addDebugMessage = (message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    setDebugMessages(prev => [...prev.slice(-19), { timestamp, message, type }]);
+  };
+  
+  // Flat form state
+  const [flatForm, setFlatForm] = useState({
+    flat_number: '',
+    area_sqft: '',
+    flat_type: '',
+    status: 'Vacant',
+    parking_slots: '',
+  });
+
+  useEffect(() => {
+    loadData();
+    loadBlocksConfig();
+  }, []);
+
+  // Debug effect to log when members/flats are loaded
+  useEffect(() => {
+    if (members.length > 0 && flats.length > 0) {
+      const a304Member = members.find(m => {
+        const mFlat = (m.flat_number || m.flatNumber || '').trim().toUpperCase();
+        return mFlat === 'A-304';
+      });
+      const a304Flat = flats.find(f => {
+        const fFlat = (f.flat_number || f.flatNumber || '').trim().toUpperCase();
+        return fFlat === 'A-304';
+      });
+      
+      console.log('🔍 A-304 Data Check:', {
+        member: a304Member,
+        flat: a304Flat,
+        allMembersCount: members.length,
+        allFlatsCount: flats.length,
+        memberFlatNumbers: members.map(m => (m.flat_number || m.flatNumber || '').trim().toUpperCase()).slice(0, 5),
+        flatNumbers: flats.map(f => (f.flat_number || f.flatNumber || '').trim().toUpperCase()).slice(0, 5)
+      });
+    }
+  }, [members, flats]);
+
+  const loadBlocksConfig = async () => {
+    try {
+      const settings = await settingsService.getSocietySettings();
+      if (settings && settings.blocks_config) {
+        setBlocksConfig(settings.blocks_config);
+        addDebugMessage(`✅ Loaded blocks config: ${JSON.stringify(settings.blocks_config)}`, 'success');
+      } else {
+        // Default config if none exists
+        setBlocksConfig([{ name: 'A', floors: 4, flatsPerFloor: 5 }]);
+        addDebugMessage('⚠️ No blocks config found, using default', 'warning');
+      }
+    } catch (error) {
+      console.error('Error loading blocks config:', error);
+      addDebugMessage(`❌ Error loading blocks config: ${error.message}`, 'error');
+      // Default config on error
+      setBlocksConfig([{ name: 'A', floors: 4, flatsPerFloor: 5 }]);
+    }
+  };
+
+  const handleSaveBlocksConfig = async () => {
+    setSaving(true);
+    try {
+      await settingsService.saveSocietySettings({
+        blocks_config: blocksConfig
+      });
+      addDebugMessage('✅ Blocks configuration saved successfully!', 'success');
+      alert('Blocks configuration saved successfully!');
+      // Reload flats after saving blocks config
+      await loadData();
+    } catch (error) {
+      console.error('Error saving blocks config:', error);
+      addDebugMessage(`❌ Error saving blocks config: ${error.message}`, 'error');
+      alert('Failed to save blocks configuration. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEditBlock = (index) => {
+    setEditingBlock(index);
+  };
+
+  const handleUpdateBlock = (index, field, value) => {
+    const updated = [...blocksConfig];
+    updated[index] = { ...updated[index], [field]: value };
+    setBlocksConfig(updated);
+  };
+
+  const handleSaveBlock = (index) => {
+    setEditingBlock(null);
+    // Auto-save when editing is done
+    handleSaveBlocksConfig();
+  };
+
+  const handleAddBlock = () => {
+    const newBlock = { name: String.fromCharCode(65 + blocksConfig.length), floors: 4, flatsPerFloor: 5 };
+    setBlocksConfig([...blocksConfig, newBlock]);
+    setEditingBlock(blocksConfig.length);
+  };
+
+  const handleDeleteBlock = async (index) => {
+    if (!confirm('Are you sure you want to delete this block? This will also delete all flats in this block.')) {
+      return;
+    }
+    const updated = blocksConfig.filter((_, i) => i !== index);
+    setBlocksConfig(updated);
+    await handleSaveBlocksConfig();
+  };
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // Load flats and members separately to handle errors better
+      let flatsList = [];
+      let membersList = [];
+      
+      try {
+        flatsList = await flatsService.getFlats();
+        const count = flatsList?.length || 0;
+        console.log('✅ Flats loaded:', count, 'flats');
+        addDebugMessage(`✅ Loaded ${count} flats successfully`, 'success');
+        // Ensure flatsList is an array
+        if (!Array.isArray(flatsList)) {
+          console.warn('⚠️ Flats response is not an array:', flatsList);
+          addDebugMessage(`⚠️ Flats response is not an array: ${JSON.stringify(flatsList)}`, 'warning');
+          flatsList = [];
+        }
+        // Debug: Check if flats have ID field
+        if (flatsList.length > 0) {
+          const sampleFlat = flatsList[0];
+          console.log('📋 Sample flat structure:', {
+            hasId: 'id' in sampleFlat,
+            has_id: '_id' in sampleFlat,
+            idValue: sampleFlat.id || sampleFlat._id,
+            allKeys: Object.keys(sampleFlat),
+            flatNumber: sampleFlat.flat_number
+          });
+          addDebugMessage(`📋 Sample flat keys: ${Object.keys(sampleFlat).join(', ')}`, 'info');
+          if (!sampleFlat.id && !sampleFlat._id) {
+            console.error('❌ WARNING: Flats are missing ID field!');
+            addDebugMessage('❌ WARNING: Flats are missing ID field!', 'error');
+          }
+        }
+      } catch (flatsError) {
+        console.error('❌ Error loading flats:', flatsError);
+        const flatsErrorMsg = flatsError.response?.data?.detail || flatsError.message || 'Failed to load flats';
+        const errorDetails = {
+          status: flatsError.response?.status,
+          data: flatsError.response?.data,
+          message: flatsErrorMsg,
+          url: flatsError.config?.url
+        };
+        console.error('Flats error details:', errorDetails);
+        addDebugMessage(`❌ Error loading flats: ${flatsErrorMsg}`, 'error');
+        addDebugMessage(`Details: Status ${errorDetails.status}, URL: ${errorDetails.url}`, 'error');
+        // Continue even if flats fail - show error but don't block
+        console.warn(`Warning: Could not load flats. ${flatsErrorMsg}`);
+        flatsList = []; // Set to empty array on error
+      }
+      
+      try {
+        membersList = await memberOnboardingService.listMembers();
+        console.log('✅ Members loaded:', membersList?.length || 0, 'members');
+        // Ensure membersList is an array
+        if (!Array.isArray(membersList)) {
+          console.warn('⚠️ Members response is not an array:', membersList);
+          membersList = [];
+        }
+      } catch (membersError) {
+        console.error('❌ Error loading members:', membersError);
+        const membersErrorMsg = membersError.response?.data?.detail || membersError.message || 'Failed to load members';
+        console.error('Members error details:', {
+          status: membersError.response?.status,
+          data: membersError.response?.data,
+          message: membersErrorMsg
+        });
+        // Continue even if members fail - show error but don't block
+        console.warn(`Warning: Could not load members. ${membersErrorMsg}`);
+        membersList = []; // Set to empty array on error
+      }
+      
+      setFlats(flatsList || []);
+      setMembers(membersList || []);
+      
+      // Debug: Log A-304 data after loading
+      if (membersList && membersList.length > 0) {
+        const a304Member = membersList.find(m => {
+          const mFlat = (m.flat_number || m.flatNumber || '').trim().toUpperCase();
+          return mFlat === 'A-304';
+        });
+        console.log('🔍 After Loading - A-304 Member:', a304Member);
+        if (a304Member) {
+          addDebugMessage(`✅ Found A-304 member: ${a304Member.name} (${a304Member.status})`, 'success');
+        } else {
+          addDebugMessage(`⚠️ A-304 member not found in ${membersList.length} members`, 'warning');
+          console.log('All member flat numbers:', membersList.map(m => (m.flat_number || m.flatNumber || 'N/A')));
+        }
+      }
+    } catch (error) {
+      console.error('❌ Unexpected error loading data:', error);
+      const errorMsg = getErrorMessage(error) || 'Failed to load data. Please check your connection and try again.';
+      console.error('Unexpected error:', errorMsg);
+      setFlats([]);
+      setMembers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Convert bedrooms to BHK format
+  const bedroomsToBHK = (bedrooms) => {
+    if (!bedrooms) return '';
+    if (bedrooms === 1) return '1 BHK';
+    if (bedrooms === 2) return '2 BHK';
+    if (bedrooms === 3) return '3 BHK';
+    if (bedrooms === 4) return '4 BHK';
+    return `${bedrooms} BHK`;
+  };
+
+  // Convert BHK to bedrooms number
+  const bhkToBedrooms = (bhk) => {
+    if (!bhk) return null;
+    const match = bhk.match(/^(\d+)\s*BHK/i);
+    return match ? parseInt(match[1]) : null;
+  };
+
+  // Auto-generate parking slot from flat number
+  // Examples: A-101 → "101", A-102 → "102", A-201 → "201", A-302 → "302"
+  const generateParkingSlot = (flatNumber) => {
+    if (!flatNumber) return '';
+    // Extract numeric part after dash/hyphen
+    // Matches patterns like: A-101, 1-201, A-302, etc.
+    const match = flatNumber.match(/[-_](\d+)$/);
+    if (match) {
+      return match[1]; // Return the numeric part
+    }
+    // If no dash found, try to extract any trailing numbers
+    const numMatch = flatNumber.match(/(\d+)$/);
+    return numMatch ? numMatch[1] : '';
+  };
+
+  // Auto-fill flat details when flat number changes
+  const handleFlatNumberChange = (flatNumber) => {
+    setFlatForm(prev => ({ ...prev, flat_number: flatNumber }));
+    
+    if (!flatNumber.trim()) {
+      // Clear form if flat number is empty
+      setFlatForm({
+        flat_number: '',
+        area_sqft: '',
+        flat_type: '',
+        status: 'Vacant',
+        parking_slots: '',
+      });
+      return;
+    }
+
+    // Normalize flat number for comparison
+    const normalizedFlatNumber = flatNumber.trim().toUpperCase();
+    
+    // Find existing flat - handle both flat_number and flatNumber field names
+    const existingFlat = flats.find(f => {
+      const fFlatNumber = (f.flat_number || f.flatNumber || '').trim().toUpperCase();
+      return fFlatNumber === normalizedFlatNumber;
+    });
+    
+    // Find existing member for this flat - use same logic as table display
+    const existingMember = members.find(m => {
+      const memberFlatNumber = (m.flat_number || m.flatNumber || '').trim().toUpperCase();
+      const isActive = m.status === 'active';
+      const hasNoMoveOut = !m.move_out_date || new Date(m.move_out_date) > new Date();
+      
+      return memberFlatNumber === normalizedFlatNumber && isActive && hasNoMoveOut;
+    });
+
+    if (existingFlat || existingMember) {
+      // Get flat data - prefer existing flat, otherwise find flat by member's flat_id
+      let flatData = existingFlat;
+      if (!flatData && existingMember) {
+        flatData = flats.find(f => f.id === existingMember.flat_id || f.flat_number === existingMember.flat_number);
+      }
+
+      // Auto-fill form from existing data
+      const trimmedFlatNumber = flatNumber.trim();
+      const autoParkingSlot = generateParkingSlot(trimmedFlatNumber);
+      
+      // Ensure area_sqft is properly loaded - use flatData.area_sqft if it exists (even if 0)
+      const loadedArea = flatData && flatData.area_sqft !== undefined && flatData.area_sqft !== null 
+        ? String(flatData.area_sqft) 
+        : '';
+      
+      console.log('📋 Loading flat data:', {
+        flatNumber: trimmedFlatNumber,
+        flatData: flatData,
+        area_sqft: flatData?.area_sqft,
+        loadedArea: loadedArea
+      });
+      addDebugMessage(`📋 Loading flat: ${trimmedFlatNumber}, Area: ${loadedArea || 'N/A'}`, 'info');
+      
+      setFlatForm(prev => ({
+        ...prev,
+        flat_number: trimmedFlatNumber,
+        area_sqft: loadedArea, // Always use loaded area, even if empty
+        flat_type: flatData?.bedrooms ? bedroomsToBHK(flatData.bedrooms) : '',
+        status: existingMember 
+          ? (existingMember.member_type === 'owner' ? 'Owner Occupied' : 'Tenant')
+          : (flatData?.occupancy_status === 'OWNER_OCCUPIED' ? 'Owner Occupied' : 
+             flatData?.occupancy_status === 'TENANT_OCCUPIED' ? 'Tenant' : 'Vacant'),
+        parking_slots: prev.parking_slots || autoParkingSlot, // Auto-generate if not already set
+      }));
+    } else {
+      // Flat doesn't exist yet, keep flat number but clear other fields
+      const trimmedFlatNumber = flatNumber.trim();
+      const autoParkingSlot = generateParkingSlot(trimmedFlatNumber);
+      
+      setFlatForm(prev => ({
+        ...prev,
+        flat_number: trimmedFlatNumber,
+        area_sqft: '',
+        flat_type: '',
+        status: 'Vacant',
+        parking_slots: autoParkingSlot, // Auto-generate parking slot from flat number
+      }));
+    }
+  };
+
+  const handleAddFlat = async (e) => {
+    // Prevent form submission if called from a form
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log('🔵 handleAddFlat called', { 
+      flatForm, 
+      saving, 
+      loading,
+      flatNumber: flatForm.flat_number,
+      areaSqft: flatForm.area_sqft
+    });
+    addDebugMessage('🔵 Button clicked - handleAddFlat called', 'info');
+    addDebugMessage(`Form data: Flat=${flatForm.flat_number}, Area=${flatForm.area_sqft}`, 'info');
+    
+    if (!flatForm.flat_number.trim()) {
+      addDebugMessage('❌ Validation: Please enter flat number', 'error');
+      alert('Please enter flat number');
+      return;
+    }
+    if (!flatForm.area_sqft || parseFloat(flatForm.area_sqft) <= 0) {
+      addDebugMessage('❌ Validation: Please enter valid flat size', 'error');
+      alert('Please enter valid flat size');
+      return;
+    }
+
+    setSaving(true);
+    addDebugMessage(`🔄 Starting save operation for flat: ${flatForm.flat_number.trim()}`, 'info');
+    try {
+      const bedrooms = bhkToBedrooms(flatForm.flat_type);
+      
+      // Check if flat already exists
+      // Handle both 'id' and '_id' field names (backend model uses alias)
+      const existingFlat = flats.find(f => {
+        const flatNum = f.flat_number || f.flatNumber;
+        return flatNum === flatForm.flat_number.trim();
+      });
+      
+      console.log('🔍 Searching for flat:', {
+        searchNumber: flatForm.flat_number.trim(),
+        totalFlats: flats.length,
+        flatNumbers: flats.map(f => ({ 
+          number: f.flat_number || f.flatNumber, 
+          id: f.id || f._id,
+          hasId: !!(f.id || f._id)
+        })),
+        found: existingFlat ? 'YES' : 'NO',
+        foundFlat: existingFlat
+      });
+      addDebugMessage(`🔍 Searching for flat: ${flatForm.flat_number.trim()}, Found: ${existingFlat ? 'YES' : 'NO'}`, 'info');
+      
+      if (existingFlat) {
+        // Get ID - handle both 'id' and '_id' field names
+        const flatId = existingFlat.id || existingFlat._id;
+        
+        // Update existing flat
+        console.log('📋 Existing flat data:', {
+          id: flatId,
+          idType: typeof flatId,
+          hasId: !!existingFlat.id,
+          has_id: !!existingFlat._id,
+          flat_number: existingFlat.flat_number || existingFlat.flatNumber,
+          area_sqft: existingFlat.area_sqft || existingFlat.areaSqft,
+          allKeys: Object.keys(existingFlat)
+        });
+        addDebugMessage(`📋 Found flat - ID: ${flatId}, Type: ${typeof flatId}`, 'info');
+        
+        if (!flatId && flatId !== 0 && flatId !== '0') {
+          addDebugMessage(`❌ Error: Flat found but ID is missing. Flat data: ${JSON.stringify(existingFlat)}`, 'error');
+          addDebugMessage(`Available keys: ${Object.keys(existingFlat).join(', ')}`, 'error');
+          alert('Error: Flat ID is missing. Please refresh the page and try again.');
+          return;
+        }
+        
+        const updateData = {
+          area_sqft: parseFloat(flatForm.area_sqft),
+        };
+        
+        if (bedrooms) {
+          updateData.bedrooms = bedrooms;
+        }
+        
+        // Use the ID we extracted (handles both 'id' and '_id')
+        const flatIdToUpdate = flatId;
+        
+        console.log('🔄 Updating flat:', {
+          flatId: flatIdToUpdate,
+          flatNumber: existingFlat.flat_number || existingFlat.flatNumber,
+          updateData: updateData
+        });
+        addDebugMessage(`🔄 Updating flat ID: ${flatIdToUpdate}, Number: ${existingFlat.flat_number || existingFlat.flatNumber}`, 'info');
+        
+        // Note: occupancy_status update might need to be done separately via member onboarding
+        // For now, we'll update what we can through the flat update endpoint
+        await flatsService.updateFlat(flatIdToUpdate, updateData);
+        addDebugMessage(`✅ Flat "${existingFlat.flat_number}" updated successfully!`, 'success');
+        alert('Flat updated successfully!');
+      } else {
+        // Create new flat - backend requires owner_name, so use a placeholder
+        const flatData = {
+          flat_number: flatForm.flat_number.trim(),
+          area_sqft: parseFloat(flatForm.area_sqft),
+          bedrooms: bedrooms || 2, // Default to 2 if not specified
+          occupants: 1,
+          owner_name: 'To be assigned', // Required field, will be updated when member is onboarded
+        };
+        
+        console.log('➕ Creating flat with data:', flatData);
+        addDebugMessage(`➕ Creating flat: ${flatData.flat_number}`, 'info');
+        const createdFlat = await flatsService.createFlat(flatData);
+        console.log('✅ Flat created successfully:', createdFlat);
+        addDebugMessage(`✅ Flat "${flatForm.flat_number.trim()}" created successfully!`, 'success');
+        alert(`Flat "${flatForm.flat_number.trim()}" added successfully!`);
+      }
+
+      // Reload data and reset form
+      await loadData();
+      setFlatForm({
+        flat_number: '',
+        area_sqft: '',
+        flat_type: '',
+        status: 'Vacant',
+        parking_slots: '',
+      });
+    } catch (error) {
+      console.error('❌ Error saving flat:', error);
+      const errorDetails = {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+        requestData: error.config?.data
+      };
+      console.error('Error details:', errorDetails);
+      addDebugMessage(`❌ Error saving flat: ${error.message}`, 'error');
+      if (error.response?.data) {
+        addDebugMessage(`Response: ${JSON.stringify(error.response.data)}`, 'error');
+      }
+      const errorMsg = getErrorMessage(error) || 'Failed to save flat';
+      if (Array.isArray(errorMsg)) {
+        const validationErrors = errorMsg.map(e => typeof e === 'object' ? e.msg || e.message : e).join('\n');
+        addDebugMessage(`Validation Errors: ${validationErrors}`, 'error');
+        alert(`Validation Error:\n${validationErrors}`);
+      } else {
+        addDebugMessage(`Full Error: ${errorMsg}`, 'error');
+        alert(`Error: ${errorMsg}\n\nCheck the Debug Panel below for details.`);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">🏠 Flats & Blocks Setup</h2>
+      <p className="settings-tab-description">Physical structure of the society</p>
+      
+      <div className="settings-section">
+        <h3>Blocks / Wings</h3>
+        <div style={{ marginBottom: '15px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button 
+            className="settings-add-btn"
+            onClick={handleAddBlock}
+            disabled={saving}
+          >
+            + Add Block
+          </button>
+          {blocksConfig.length > 0 && (
+            <button 
+              className="settings-save-btn"
+              onClick={handleSaveBlocksConfig}
+              disabled={saving}
+              style={{ marginLeft: '10px' }}
+            >
+              {saving ? '⏳ Saving...' : '💾 Save Configuration'}
+            </button>
+          )}
+        </div>
+        <div className="settings-table-container">
+          <table className="settings-table">
+            <thead>
+              <tr>
+                <th>Block/Wing</th>
+                <th>Floors</th>
+                <th>Flats per Floor</th>
+                <th>Total Flats</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {blocksConfig.length === 0 ? (
+                <tr>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                    No blocks configured. Click "+ Add Block" to add one.
+                  </td>
+                </tr>
+              ) : (
+                blocksConfig.map((block, index) => {
+                  const totalFlats = block.floors * block.flatsPerFloor;
+                  const isEditing = editingBlock === index;
+                  return (
+                    <tr key={index}>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={block.name}
+                            onChange={(e) => handleUpdateBlock(index, 'name', e.target.value)}
+                            style={{ width: '60px', padding: '4px' }}
+                            maxLength="10"
+                          />
+                        ) : (
+                          <strong>{block.name}</strong>
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={block.floors}
+                            onChange={(e) => handleUpdateBlock(index, 'floors', parseInt(e.target.value) || 0)}
+                            style={{ width: '80px', padding: '4px' }}
+                            min="1"
+                          />
+                        ) : (
+                          block.floors
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={block.flatsPerFloor}
+                            onChange={(e) => handleUpdateBlock(index, 'flatsPerFloor', parseInt(e.target.value) || 0)}
+                            style={{ width: '80px', padding: '4px' }}
+                            min="1"
+                          />
+                        ) : (
+                          block.flatsPerFloor
+                        )}
+                      </td>
+                      <td>
+                        <strong>{totalFlats}</strong>
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <button 
+                            className="settings-action-btn"
+                            onClick={() => handleSaveBlock(index)}
+                            style={{ backgroundColor: '#34C759', color: 'white' }}
+                          >
+                            ✓ Save
+                          </button>
+                        ) : (
+                          <>
+                            <button 
+                              className="settings-action-btn"
+                              onClick={() => handleEditBlock(index)}
+                            >
+                              Edit
+                            </button>
+                            <button 
+                              className="settings-action-btn danger"
+                              onClick={() => handleDeleteBlock(index)}
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        {blocksConfig.length > 0 && (
+          <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '6px', fontSize: '14px', color: '#666' }}>
+            <strong>Note:</strong> After saving, flats will be automatically synced to match this configuration. 
+            Existing flats that don't match will be removed, and missing flats will be created.
+          </div>
+        )}
+      </div>
+
+      <div className="settings-section">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 style={{ margin: 0 }}>Existing Flats</h3>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              onClick={() => setShowDebugPanel(!showDebugPanel)}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: showDebugPanel ? '#FF9500' : '#666',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold'
+              }}
+            >
+              {showDebugPanel ? '🔽 Hide Debug' : '🔺 Show Debug'}
+            </button>
+            <button
+              onClick={loadData}
+              disabled={loading}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#007AFF',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              {loading ? 'Loading...' : '🔄 Refresh'}
+            </button>
+          </div>
+        </div>
+        
+        {/* Debug Panel */}
+        {showDebugPanel && (
+          <div style={{
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: '#1e1e1e',
+            color: '#fff',
+            borderRadius: '8px',
+            maxHeight: '300px',
+            overflowY: 'auto',
+            fontFamily: 'monospace',
+            fontSize: '12px'
+          }}>
+            <div style={{ marginBottom: '10px', fontWeight: 'bold', color: '#007AFF' }}>
+              Debug Console (Last 20 messages)
+            </div>
+            {debugMessages.length === 0 ? (
+              <div style={{ color: '#888' }}>No debug messages yet. Try adding a flat or refreshing.</div>
+            ) : (
+              debugMessages.map((msg, index) => (
+                <div
+                  key={index}
+                  style={{
+                    marginBottom: '8px',
+                    padding: '5px',
+                    backgroundColor: msg.type === 'error' ? '#4a1e1e' :
+                                    msg.type === 'warning' ? '#4a3e1e' :
+                                    msg.type === 'success' ? '#1e4a1e' : '#1e1e2e',
+                    borderRadius: '4px',
+                    borderLeft: `3px solid ${
+                      msg.type === 'error' ? '#ff4444' :
+                      msg.type === 'warning' ? '#ffaa00' :
+                      msg.type === 'success' ? '#44ff44' : '#007AFF'
+                    }`
+                  }}
+                >
+                  <span style={{ color: '#888' }}>[{msg.timestamp}]</span>{' '}
+                  <span style={{
+                    color: msg.type === 'error' ? '#ff8888' :
+                           msg.type === 'warning' ? '#ffcc88' :
+                           msg.type === 'success' ? '#88ff88' : '#fff'
+                  }}>
+                    {msg.message}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+        {loading ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+            Loading flats and members data...
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: '16px', fontSize: '14px', color: '#666' }}>
+              {flats.length > 0 && (
+                <span style={{ color: '#34C759', marginRight: '16px' }}>
+                  ✓ {flats.length} flat{flats.length !== 1 ? 's' : ''} loaded
+                </span>
+              )}
+              {members.length > 0 && (
+                <span style={{ color: '#34C759' }}>
+                  ✓ {members.length} member{members.length !== 1 ? 's' : ''} loaded
+                </span>
+              )}
+              {flats.length === 0 && members.length === 0 && (
+                <span style={{ color: '#FF9500' }}>
+                  ⚠ No data loaded. Check console for errors or click Refresh.
+                </span>
+              )}
+            </div>
+            
+            {flats.length > 0 ? (
+              <div className="settings-table-container" style={{ marginBottom: '24px' }}>
+                {/* Debug Info */}
+                {flats.some(f => (f.flat_number || f.flatNumber || '').trim().toUpperCase() === 'A-304') && (
+                  <div style={{ 
+                    padding: '10px', 
+                    marginBottom: '10px', 
+                    backgroundColor: '#FFF3CD', 
+                    border: '1px solid #FFC107',
+                    borderRadius: '4px',
+                    fontSize: '12px'
+                  }}>
+                    <strong>🔍 A-304 Debug:</strong> Members loaded: {members.length}, 
+                    A-304 Member: {members.find(m => ((m.flat_number || m.flatNumber || '').trim().toUpperCase() === 'A-304'))?.name || 'NOT FOUND'}
+                    <br />
+                    Check browser console (F12) for detailed logs.
+                  </div>
+                )}
+                <table className="settings-table">
+                  <thead>
+                    <tr>
+                      <th>Flat Number</th>
+                      <th>Area (Sq.ft)</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Owner/Tenant</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {flats.map(flat => {
+                      const flatId = flat.id || flat._id;
+                      const flatNumber = flat.flat_number || flat.flatNumber;
+                      const flatArea = flat.area_sqft || flat.areaSqft;
+                      
+                      // Find active member for this flat - use same logic as Members page
+                      // Normalize flat numbers for comparison (trim whitespace, case-insensitive)
+                      const normalizedFlatNumber = flatNumber ? flatNumber.trim().toUpperCase() : '';
+                      
+                      // Find active member for this flat - try multiple matching strategies
+                      let flatMember = null;
+                      
+                      // Only try to find member if we have members loaded
+                      if (members && members.length > 0) {
+                        flatMember = members.find(m => {
+                          // Strategy 1: Match by flat_number (normalized)
+                          const memberFlatNumber = (m.flat_number || m.flatNumber || '').trim().toUpperCase();
+                          const flatNumberMatch = memberFlatNumber === normalizedFlatNumber;
+                          
+                          // Strategy 2: Match by flat_id (if available)
+                          const memberFlatId = m.flat_id ? String(m.flat_id) : null;
+                          const flatIdStr = flatId ? String(flatId) : null;
+                          const flatIdMatch = flatIdStr && memberFlatId && memberFlatId === flatIdStr;
+                          
+                          // Status checks - be more lenient
+                          const statusLower = (m.status || '').toLowerCase();
+                          const isActive = statusLower === 'active';
+                          const hasNoMoveOut = !m.move_out_date || 
+                                              m.move_out_date === null || 
+                                              m.move_out_date === '' ||
+                                              (m.move_out_date && new Date(m.move_out_date) > new Date());
+                          
+                          // Match if either flat_number OR flat_id matches, and member is active
+                          const matches = (flatNumberMatch || flatIdMatch) && isActive && hasNoMoveOut;
+                          
+                          // Debug for A-304
+                          if (normalizedFlatNumber === 'A-304' || flatNumber === 'A-304') {
+                            console.log('🔍 A-304 Member Lookup - Checking member:', {
+                              memberName: m.name,
+                              memberFlatNumber: memberFlatNumber,
+                              normalizedFlatNumber: normalizedFlatNumber,
+                              memberFlatId: memberFlatId,
+                              flatId: flatIdStr,
+                              flatNumberMatch: flatNumberMatch,
+                              flatIdMatch: flatIdMatch,
+                              status: m.status,
+                              statusLower: statusLower,
+                              isActive: isActive,
+                              move_out_date: m.move_out_date,
+                              hasNoMoveOut: hasNoMoveOut,
+                              matches: matches
+                            });
+                          }
+                          
+                          return matches;
+                        });
+                        
+                        // Debug for A-304 - final result
+                        if ((normalizedFlatNumber === 'A-304' || flatNumber === 'A-304') && !flatMember) {
+                          console.log('❌ A-304 NO MEMBER FOUND - All members checked:', {
+                            totalMembers: members.length,
+                            allMembers: members.map(m => ({
+                              name: m.name,
+                              flat_number: m.flat_number || m.flatNumber,
+                              flat_id: m.flat_id,
+                              status: m.status,
+                              move_out_date: m.move_out_date
+                            })),
+                            searchCriteria: {
+                              normalizedFlatNumber: normalizedFlatNumber,
+                              flatId: flatId
+                            }
+                          });
+                        } else if ((normalizedFlatNumber === 'A-304' || flatNumber === 'A-304') && flatMember) {
+                          console.log('✅ A-304 MEMBER FOUND:', {
+                            name: flatMember.name,
+                            flat_number: flatMember.flat_number,
+                            flat_id: flatMember.flat_id,
+                            status: flatMember.status,
+                            member_type: flatMember.member_type
+                          });
+                        }
+                      } else {
+                        // Debug: No members loaded
+                        if (normalizedFlatNumber === 'A-304' || flatNumber === 'A-304') {
+                          console.log('⚠️ A-304: Members array is empty or not loaded yet');
+                        }
+                      }
+                      
+                      // Debug for A-304 specifically (console only, no state updates during render)
+                      if (normalizedFlatNumber === 'A-304') {
+                        console.log('🔍 A-304 Debug:', {
+                          flatNumber: flatNumber,
+                          normalizedFlatNumber: normalizedFlatNumber,
+                          membersCount: members.length,
+                          matchingMembers: members.filter(m => {
+                            const mFlat = (m.flat_number || m.flatNumber || '').trim().toUpperCase();
+                            return mFlat === normalizedFlatNumber;
+                          }),
+                          foundMember: flatMember,
+                          allMembersForA304: members.filter(m => {
+                            const mFlat = (m.flat_number || m.flatNumber || '').trim();
+                            return mFlat.toUpperCase().includes('A-304');
+                          })
+                        });
+                        // Note: Don't call addDebugMessage here - it updates state and causes infinite loop
+                        // Use console.log only for debugging during render
+                      }
+                      
+                      return (
+                        <tr key={flatId || flatNumber}>
+                          <td><strong>{flatNumber}</strong></td>
+                          <td>
+                            <input
+                              type="number"
+                              value={flatArea || ''}
+                              onChange={async (e) => {
+                                const newArea = parseFloat(e.target.value);
+                                if (!isNaN(newArea) && newArea > 0 && flatId) {
+                                  try {
+                                    await flatsService.updateFlat(flatId, { area_sqft: newArea });
+                                    addDebugMessage(`✅ Updated area for ${flatNumber} to ${newArea}`, 'success');
+                                    await loadData(); // Reload to refresh the list
+                                  } catch (error) {
+                                    console.error('Error updating area:', error);
+                                    addDebugMessage(`❌ Error updating area: ${error.message}`, 'error');
+                                    alert('Failed to update area. Please try again.');
+                                  }
+                                }
+                              }}
+                              onBlur={async (e) => {
+                                // Auto-save on blur if value changed
+                                const newArea = parseFloat(e.target.value);
+                                if (!isNaN(newArea) && newArea > 0 && flatId && newArea !== flatArea) {
+                                  try {
+                                    await flatsService.updateFlat(flatId, { area_sqft: newArea });
+                                    addDebugMessage(`✅ Auto-saved area for ${flatNumber}`, 'success');
+                                    await loadData();
+                                  } catch (error) {
+                                    console.error('Error auto-saving area:', error);
+                                  }
+                                }
+                              }}
+                              style={{
+                                width: '100px',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                border: '1px solid #ddd',
+                                fontSize: '14px',
+                              }}
+                              placeholder="Area"
+                            />
+                          </td>
+                          <td>{flat.bedrooms ? `${flat.bedrooms} BR` : 'N/A'}</td>
+                          <td>
+                            <span style={{
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              backgroundColor: flatMember 
+                                ? (((flatMember.member_type || flatMember.memberType || '').toLowerCase() === 'owner') ? '#E3F2FD' : '#E8F5E9')
+                                : '#F5F5F5',
+                              color: flatMember 
+                                ? (((flatMember.member_type || flatMember.memberType || '').toLowerCase() === 'owner') ? '#1976D2' : '#2E7D32')
+                                : '#666',
+                            }}>
+                              {(() => {
+                                if (!flatMember) {
+                                  if (normalizedFlatNumber === 'A-304' || flatNumber === 'A-304') {
+                                    console.log('❌ A-304 Showing Vacant:', { flatId, flatNumber, membersCount: members.length });
+                                  }
+                                  return 'Vacant';
+                                }
+                                const memberType = (flatMember.member_type || flatMember.memberType || 'owner').toLowerCase();
+                                return memberType === 'owner' ? 'Owner' : 'Tenant';
+                              })()}
+                            </span>
+                          </td>
+                          <td>
+                            {flatMember ? flatMember.name : (flat.owner_name || 'N/A')}
+                            {normalizedFlatNumber === 'A-304' && flatMember && console.log('✅ A-304 Found:', flatMember.name)}
+                          </td>
+                          <td>
+                            <button 
+                              className="settings-action-btn"
+                              onClick={() => {
+                                // Auto-fill form with this flat's data
+                                handleFlatNumberChange(flat.flat_number);
+                                // Scroll to form
+                                document.querySelector('.settings-section:last-child')?.scrollIntoView({ behavior: 'smooth' });
+                              }}
+                            >
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#666', marginBottom: '24px' }}>
+                No flats found. Add your first flat below.
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="settings-section">
+        <h3>Add / Edit Flat Details</h3>
+        <form 
+          onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleAddFlat(e);
+          }}
+          style={{ display: 'contents' }}
+        >
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>Flat Number *</label>
+            <input 
+              type="text" 
+              placeholder="A-101" 
+              value={flatForm.flat_number}
+              onChange={(e) => handleFlatNumberChange(e.target.value)}
+              list="flat-numbers"
+            />
+            <datalist id="flat-numbers">
+              {flats.map(flat => (
+                <option key={flat.id || flat._id || flat.flat_number} value={flat.flat_number || flat.flatNumber} />
+              ))}
+            </datalist>
+            <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+              Start typing to see existing flats. Data will auto-fill from member records.
+            </small>
+          </div>
+          <div className="settings-form-group">
+            <label>Flat Size (Sq.ft) *</label>
+            <input 
+              type="number" 
+              placeholder="1200" 
+              value={flatForm.area_sqft}
+              onChange={(e) => setFlatForm(prev => ({ ...prev, area_sqft: e.target.value }))}
+            />
+          </div>
+          <div className="settings-form-group">
+            <label>Flat Type</label>
+            <select 
+              value={flatForm.flat_type}
+              onChange={(e) => setFlatForm(prev => ({ ...prev, flat_type: e.target.value }))}
+            >
+              <option value="">Select Type</option>
+              <option>1 BHK</option>
+              <option>2 BHK</option>
+              <option>3 BHK</option>
+              <option>4 BHK</option>
+              <option>Penthouse</option>
+            </select>
+          </div>
+          <div className="settings-form-group">
+            <label>Status</label>
+            <select 
+              value={flatForm.status}
+              onChange={(e) => setFlatForm(prev => ({ ...prev, status: e.target.value }))}
+            >
+              <option>Owner Occupied</option>
+              <option>Tenant</option>
+              <option>Vacant</option>
+            </select>
+          </div>
+        </div>
+        <div className="settings-form-group">
+          <label>Parking Slots</label>
+          <input 
+            type="text" 
+            placeholder="P-01, P-02" 
+            value={flatForm.parking_slots}
+            onChange={(e) => setFlatForm(prev => ({ ...prev, parking_slots: e.target.value }))}
+          />
+        </div>
+        <div style={{ marginTop: '15px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button 
+            type="submit"
+            className="settings-add-btn"
+            disabled={loading || saving}
+            style={{
+              opacity: (loading || saving) ? 0.6 : 1,
+              cursor: (loading || saving) ? 'not-allowed' : 'pointer',
+              padding: '12px 24px',
+              fontSize: '16px',
+              fontWeight: 'bold'
+            }}
+          >
+            {saving ? '⏳ Saving...' : `+ ${flats.find(f => f.flat_number === flatForm.flat_number.trim()) ? 'Update' : 'Add'} Flat`}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              alert('Test button works! Now try the Add Flat button.');
+              addDebugMessage('🧪 Test button clicked', 'info');
+            }}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#34C759',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold'
+            }}
+          >
+            🧪 Test Click
+          </button>
+        </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const MemberConfigTab = () => {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    max_members_per_flat: 4,
+    messaging_members_per_flat: 3,
+    pan_mandatory: true,
+    aadhaar_mandatory: true,
+    sale_deed_required: true,
+    rent_agreement_required: true,
+    tenant_expiry_reminder_days: 30,
+    approval_workflow: 'auto', // 'auto' or 'admin'
+  });
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    setLoading(true);
+    try {
+      const settings = await settingsService.getSocietySettings();
+      if (settings) {
+        setFormData({
+          max_members_per_flat: settings.max_members_per_flat || 4,
+          messaging_members_per_flat: 3, // Not in API, keeping default
+          pan_mandatory: true, // Not in API, keeping default
+          aadhaar_mandatory: true, // Not in API, keeping default
+          sale_deed_required: true, // Not in API, keeping default
+          rent_agreement_required: true, // Not in API, keeping default
+          tenant_expiry_reminder_days: settings.tenant_expiry_reminder_days || 30,
+          approval_workflow: settings.member_approval_required ? 'admin' : 'auto',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+      setMessage({ type: 'error', text: 'Failed to load settings. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    
+    setSaving(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      const settingsData = {
+        max_members_per_flat: parseInt(formData.max_members_per_flat) || 4,
+        tenant_expiry_reminder_days: parseInt(formData.tenant_expiry_reminder_days) || 30,
+        member_approval_required: formData.approval_workflow === 'admin',
+      };
+
+      await settingsService.saveSocietySettings(settingsData);
+      setMessage({ type: 'success', text: 'Member configuration saved successfully!' });
+      
+      // Clear message after 3 seconds
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      const errorMsg = getErrorMessage(error) || 'Failed to save settings. Please try again.';
+      setMessage({ type: 'error', text: errorMsg });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="settings-tab-content">
+        <h2 className="settings-tab-title">👥 Member Configuration</h2>
+        <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+          Loading member configuration...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">👥 Member Configuration</h2>
+      <p className="settings-tab-description">Resident governance rules</p>
+      
+      {/* Success/Error Message */}
+      {message.text && (
+        <div style={{
+          padding: '12px 16px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FFEBEE',
+          color: message.type === 'success' ? '#2E7D32' : '#C62828',
+          border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#EF5350'}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <span>{message.type === 'success' ? '✓' : '✗'}</span>
+          <span>{message.text}</span>
+        </div>
+      )}
+      
+      <form className="settings-form" onSubmit={handleSave}>
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>Allowed Family Members per Flat</label>
+            <input 
+              type="number" 
+              min="1" 
+              value={formData.max_members_per_flat}
+              onChange={(e) => setFormData(prev => ({ ...prev, max_members_per_flat: e.target.value }))}
+            />
+          </div>
+          <div className="settings-form-group">
+            <label>Messaging Members per Flat (default)</label>
+            <input 
+              type="number" 
+              min="1" 
+              value={formData.messaging_members_per_flat}
+              onChange={(e) => setFormData(prev => ({ ...prev, messaging_members_per_flat: e.target.value }))}
+            />
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Document Requirements</h3>
+          <div className="settings-checkbox-group">
+            <label className="settings-checkbox">
+              <input 
+                type="checkbox" 
+                checked={formData.pan_mandatory}
+                onChange={(e) => setFormData(prev => ({ ...prev, pan_mandatory: e.target.checked }))}
+              />
+              <span>PAN mandatory for owners</span>
+            </label>
+            <label className="settings-checkbox">
+              <input 
+                type="checkbox" 
+                checked={formData.aadhaar_mandatory}
+                onChange={(e) => setFormData(prev => ({ ...prev, aadhaar_mandatory: e.target.checked }))}
+              />
+              <span>Aadhaar mandatory</span>
+            </label>
+            <label className="settings-checkbox">
+              <input 
+                type="checkbox" 
+                checked={formData.sale_deed_required}
+                onChange={(e) => setFormData(prev => ({ ...prev, sale_deed_required: e.target.checked }))}
+              />
+              <span>Sale deed required for owners</span>
+            </label>
+            <label className="settings-checkbox">
+              <input 
+                type="checkbox" 
+                checked={formData.rent_agreement_required}
+                onChange={(e) => setFormData(prev => ({ ...prev, rent_agreement_required: e.target.checked }))}
+              />
+              <span>Rent agreement required for tenants</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="settings-form-group">
+          <label>Tenant Validity Expiry Reminder (days before)</label>
+          <input 
+            type="number" 
+            min="1" 
+            value={formData.tenant_expiry_reminder_days}
+            onChange={(e) => setFormData(prev => ({ ...prev, tenant_expiry_reminder_days: e.target.value }))}
+          />
+        </div>
+
+        <div className="settings-form-group">
+          <label>Approval Workflow</label>
+          <select 
+            value={formData.approval_workflow}
+            onChange={(e) => setFormData(prev => ({ ...prev, approval_workflow: e.target.value }))}
+          >
+            <option value="auto">Auto-approve</option>
+            <option value="admin">Admin approval required</option>
+          </select>
+        </div>
+
+        <div className="settings-form-actions">
+          <button 
+            type="submit"
+            className="settings-save-btn"
+            disabled={saving}
+            style={{ opacity: saving ? 0.6 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+          <button 
+            type="button"
+            className="settings-cancel-btn"
+            onClick={() => loadSettings()}
+            disabled={saving}
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const BillingRulesTab = () => {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    maintenance_calculation_logic: 'mixed', // 'sqft', 'fixed', 'water_based', 'mixed'
+    maintenance_rate_sqft: 0,
+    maintenance_rate_flat: 0,
+    sinking_fund_rate: 0,
+    repair_fund_rate: 0,
+    association_fund_rate: 0,
+    corpus_fund_rate: 0,
+    water_calculation_type: 'person', // 'flat', 'person', 'meter'
+    water_rate_per_person: 0,
+    water_min_charge: 0,
+    expense_distribution_logic: 'equal', // 'equal', 'sqft'
+  });
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    setLoading(true);
+    try {
+      const settings = await settingsService.getSocietySettings();
+      if (settings) {
+        setFormData({
+          maintenance_calculation_logic: settings.maintenance_calculation_logic || 'mixed',
+          maintenance_rate_sqft: settings.maintenance_rate_sqft || 0,
+          maintenance_rate_flat: settings.maintenance_rate_flat || 0,
+          sinking_fund_rate: settings.sinking_fund_rate || 0,
+          repair_fund_rate: settings.repair_fund_rate || 0,
+          association_fund_rate: settings.association_fund_rate || 0,
+          corpus_fund_rate: settings.corpus_fund_rate || 0,
+          water_calculation_type: settings.water_calculation_type || 'person',
+          water_rate_per_person: settings.water_rate_per_person || 0,
+          water_min_charge: settings.water_min_charge || 0,
+          expense_distribution_logic: settings.expense_distribution_logic || 'equal',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading billing rules:', error);
+      setMessage({ type: 'error', text: 'Failed to load billing rules. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    
+    setSaving(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      const settingsData = {
+        maintenance_calculation_logic: formData.maintenance_calculation_logic,
+        maintenance_rate_sqft: parseFloat(formData.maintenance_rate_sqft) || 0,
+        maintenance_rate_flat: parseFloat(formData.maintenance_rate_flat) || 0,
+        sinking_fund_rate: parseFloat(formData.sinking_fund_rate) || 0,
+        repair_fund_rate: parseFloat(formData.repair_fund_rate) || 0,
+        association_fund_rate: parseFloat(formData.association_fund_rate) || 0,
+        corpus_fund_rate: parseFloat(formData.corpus_fund_rate) || 0,
+        water_calculation_type: formData.water_calculation_type,
+        water_rate_per_person: parseFloat(formData.water_rate_per_person) || 0,
+        water_min_charge: parseFloat(formData.water_min_charge) || 0,
+        expense_distribution_logic: formData.expense_distribution_logic,
+      };
+
+      await settingsService.saveSocietySettings(settingsData);
+      setMessage({ type: 'success', text: 'Billing rules saved successfully!' });
+      
+      // Clear message after 3 seconds
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error('Error saving billing rules:', error);
+      const errorMsg = getErrorMessage(error) || 'Failed to save billing rules. Please try again.';
+      setMessage({ type: 'error', text: errorMsg });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="settings-tab-content">
+        <h2 className="settings-tab-title">🧾 Billing Rules</h2>
+        <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+          Loading billing rules...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">🧾 Billing Rules</h2>
+      <p className="settings-tab-description">Configure billing and charges</p>
+      
+      {/* Success/Error Message */}
+      {message.text && (
+        <div style={{
+          padding: '12px 16px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FFEBEE',
+          color: message.type === 'success' ? '#2E7D32' : '#C62828',
+          border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#EF5350'}`,
+        }}>
+          {message.text}
+        </div>
+      )}
+
+      <form className="settings-form" onSubmit={handleSave}>
+        <div className="settings-section">
+          <h3>Maintenance Calculation Method</h3>
+          <div className="settings-form-group">
+            <label>Calculation Logic *</label>
+            <select
+              value={formData.maintenance_calculation_logic}
+              onChange={(e) => setFormData({ ...formData, maintenance_calculation_logic: e.target.value })}
+              required
+            >
+              <option value="sqft">Square Feet Based</option>
+              <option value="fixed">Fixed per Flat</option>
+              <option value="water_based">Water Based</option>
+              <option value="mixed">Mixed (Sqft + Water + Fixed Expenses)</option>
+            </select>
+            <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
+              Mixed method: Maintenance (sqft) + Water (per person) + Fixed Expenses + Funds
+            </small>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Fixed Charges</h3>
+          <div className="settings-form-row">
+            <div className="settings-form-group">
+              <label>Rate per Sq.ft (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.maintenance_rate_sqft}
+                onChange={(e) => setFormData({ ...formData, maintenance_rate_sqft: e.target.value })}
+                placeholder="5.00"
+              />
+            </div>
+            <div className="settings-form-group">
+              <label>Maintenance per Flat (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.maintenance_rate_flat}
+                onChange={(e) => setFormData({ ...formData, maintenance_rate_flat: e.target.value })}
+                placeholder="500"
+              />
+            </div>
+          </div>
+          <div className="settings-form-row">
+            <div className="settings-form-group">
+              <label>Sinking Fund per Flat (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.sinking_fund_rate}
+                onChange={(e) => setFormData({ ...formData, sinking_fund_rate: e.target.value })}
+                placeholder="200"
+              />
+              <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
+                Amount per flat (not total)
+              </small>
+            </div>
+            <div className="settings-form-group">
+              <label>Repair Fund per Flat (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.repair_fund_rate}
+                onChange={(e) => setFormData({ ...formData, repair_fund_rate: e.target.value })}
+                placeholder="300"
+              />
+              <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
+                Amount per flat (not total)
+              </small>
+            </div>
+          </div>
+          <div className="settings-form-row">
+            <div className="settings-form-group">
+              <label>Association Fund per Flat (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.association_fund_rate}
+                onChange={(e) => setFormData({ ...formData, association_fund_rate: e.target.value })}
+                placeholder="100"
+              />
+            </div>
+            <div className="settings-form-group">
+              <label>Corpus Fund per Flat (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.corpus_fund_rate}
+                onChange={(e) => setFormData({ ...formData, corpus_fund_rate: e.target.value })}
+                placeholder="150"
+              />
+              <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
+                Amount per flat (not total)
+              </small>
+            </div>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Water Billing</h3>
+          <div className="settings-form-group">
+            <label>Water Calculation Type</label>
+            <select
+              value={formData.water_calculation_type}
+              onChange={(e) => setFormData({ ...formData, water_calculation_type: e.target.value })}
+            >
+              <option value="flat">Per Flat</option>
+              <option value="person">Per Person</option>
+              <option value="meter">Per Meter</option>
+            </select>
+          </div>
+          <div className="settings-form-row">
+            <div className="settings-form-group">
+              <label>Water Rate per Person (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.water_rate_per_person}
+                onChange={(e) => setFormData({ ...formData, water_rate_per_person: e.target.value })}
+                placeholder="200"
+              />
+            </div>
+            <div className="settings-form-group">
+              <label>Minimum Charge per Flat (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.water_min_charge}
+                onChange={(e) => setFormData({ ...formData, water_min_charge: e.target.value })}
+                placeholder="200"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>Shared Expense Distribution</h3>
+          <div className="settings-form-group">
+            <label>Distribution Method</label>
+            <select
+              value={formData.expense_distribution_logic}
+              onChange={(e) => setFormData({ ...formData, expense_distribution_logic: e.target.value })}
+            >
+              <option value="equal">Equal to all flats</option>
+              <option value="sqft">Proportionate to sq.ft</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="settings-form-actions">
+          <button type="submit" className="settings-save-btn" disabled={saving}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const LateFeeTab = () => {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    bill_due_days: 5, // Due date of month
+    late_payment_grace_days: 10,
+    late_payment_penalty_type: 'fixed', // 'fixed' or 'percentage'
+    late_payment_penalty_value: 5,
+    late_fee_frequency: 'one-time', // Not in API, keeping for UI
+    interest_on_overdue: false,
+    interest_rate: 1.5,
+    max_penalty_cap: 1000, // Not in API, keeping for UI
+  });
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    setLoading(true);
+    try {
+      const settings = await settingsService.getSocietySettings();
+      if (settings) {
+        setFormData({
+          bill_due_days: settings.bill_due_days || 5,
+          late_payment_grace_days: settings.late_payment_grace_days || 10,
+          late_payment_penalty_type: settings.late_payment_penalty_type || 'fixed',
+          late_payment_penalty_value: settings.late_payment_penalty_value || 5,
+          late_fee_frequency: 'one-time', // Not in API
+          interest_on_overdue: settings.interest_on_overdue || false,
+          interest_rate: settings.interest_rate || 1.5,
+          max_penalty_cap: 1000, // Not in API
+        });
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+      setMessage({ type: 'error', text: 'Failed to load settings. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    
+    setSaving(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      // Validate penalty value if penalty type is set
+      if (formData.late_payment_penalty_type && (!formData.late_payment_penalty_value || formData.late_payment_penalty_value <= 0)) {
+        setMessage({ type: 'error', text: 'Late Fee Amount/Percentage must be greater than 0' });
+        setSaving(false);
+        return;
+      }
+
+      // Validate interest rate if interest is enabled
+      if (formData.interest_on_overdue && (!formData.interest_rate || formData.interest_rate <= 0)) {
+        setMessage({ type: 'error', text: 'Interest Rate must be greater than 0 when interest on arrears is enabled' });
+        setSaving(false);
+        return;
+      }
+
+      const settingsData = {
+        bill_due_days: parseInt(formData.bill_due_days) || 5,
+        late_payment_grace_days: parseInt(formData.late_payment_grace_days) || 0,
+        late_payment_penalty_type: formData.late_payment_penalty_type,
+        late_payment_penalty_value: parseFloat(formData.late_payment_penalty_value) || undefined,
+        interest_on_overdue: formData.interest_on_overdue,
+        interest_rate: formData.interest_on_overdue ? parseFloat(formData.interest_rate) : undefined,
+      };
+
+      await settingsService.saveSocietySettings(settingsData);
+      setMessage({ type: 'success', text: 'Late fee & penalties configuration saved successfully!' });
+      
+      // Clear message after 3 seconds
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      const errorMsg = getErrorMessage(error) || 'Failed to save settings. Please try again.';
+      setMessage({ type: 'error', text: errorMsg });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="settings-tab-content">
+        <h2 className="settings-tab-title">⏳ Late Fee & Penalties</h2>
+        <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+          Loading late fee configuration...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">⏳ Late Fee & Penalties</h2>
+      <p className="settings-tab-description">Configure late payment charges</p>
+      
+      {/* Success/Error Message */}
+      {message.text && (
+        <div style={{
+          padding: '12px 16px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FFEBEE',
+          color: message.type === 'success' ? '#2E7D32' : '#C62828',
+          border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#EF5350'}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <span>{message.type === 'success' ? '✓' : '✗'}</span>
+          <span>{message.text}</span>
+        </div>
+      )}
+      
+      <form className="settings-form" onSubmit={handleSave}>
+        <div className="settings-form-group">
+          <label>Due Date of Every Month</label>
+          <input 
+            type="number" 
+            min="1" 
+            max="31" 
+            value={formData.bill_due_days}
+            onChange={(e) => setFormData(prev => ({ ...prev, bill_due_days: e.target.value }))}
+          />
+          <small>Day of month when bills are due</small>
+        </div>
+
+        <div className="settings-form-group">
+          <label>Grace Period (days)</label>
+          <input 
+            type="number" 
+            min="0" 
+            value={formData.late_payment_grace_days}
+            onChange={(e) => setFormData(prev => ({ ...prev, late_payment_grace_days: e.target.value }))}
+          />
+          <small>Days after due date before late fee applies</small>
+        </div>
+
+        <div className="settings-form-group">
+          <label>Late Fee Type</label>
+          <select 
+            value={formData.late_payment_penalty_type}
+            onChange={(e) => setFormData(prev => ({ ...prev, late_payment_penalty_type: e.target.value }))}
+          >
+            <option value="fixed">Flat Amount</option>
+            <option value="percentage">Percentage of Bill</option>
+          </select>
+        </div>
+
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>Late Fee Amount / Percentage</label>
+            <input 
+              type="number" 
+              placeholder={formData.late_payment_penalty_type === 'fixed' ? "500" : "5"} 
+              step={formData.late_payment_penalty_type === 'percentage' ? "0.01" : "1"}
+              value={formData.late_payment_penalty_value}
+              onChange={(e) => setFormData(prev => ({ ...prev, late_payment_penalty_value: e.target.value }))}
+            />
+            <small>{formData.late_payment_penalty_type === 'fixed' ? 'Enter amount in ₹' : 'Enter percentage (e.g., 5 for 5%)'}</small>
+          </div>
+          <div className="settings-form-group">
+            <label>Late Fee Frequency</label>
+            <select 
+              value={formData.late_fee_frequency}
+              onChange={(e) => setFormData(prev => ({ ...prev, late_fee_frequency: e.target.value }))}
+            >
+              <option value="one-time">One-time</option>
+              <option value="monthly">Monthly</option>
+              <option value="daily">Daily</option>
+            </select>
+            <small style={{ color: '#666', fontSize: '11px' }}>Note: Frequency setting is for display only</small>
+          </div>
+        </div>
+
+        <div className="settings-checkbox-group">
+          <label className="settings-checkbox">
+            <input 
+              type="checkbox" 
+              checked={formData.interest_on_overdue}
+              onChange={(e) => setFormData(prev => ({ ...prev, interest_on_overdue: e.target.checked }))}
+            />
+            <span>Apply interest on arrears</span>
+          </label>
+        </div>
+
+        <div className="settings-form-group">
+          <label>Interest Rate on Arrears (% per month)</label>
+          <input 
+            type="number" 
+            step="0.1" 
+            placeholder="1.5" 
+            value={formData.interest_rate}
+            onChange={(e) => setFormData(prev => ({ ...prev, interest_rate: e.target.value }))}
+            disabled={!formData.interest_on_overdue}
+            style={{ opacity: formData.interest_on_overdue ? 1 : 0.6 }}
+          />
+        </div>
+
+        <div className="settings-form-group">
+          <label>Maximum Penalty Cap (₹)</label>
+          <input 
+            type="number" 
+            placeholder="5000" 
+            value={formData.max_penalty_cap}
+            onChange={(e) => setFormData(prev => ({ ...prev, max_penalty_cap: e.target.value }))}
+          />
+          <small>Maximum total penalty that can be charged (Note: This setting is for display only)</small>
+        </div>
+
+        <div className="settings-form-actions">
+          <button 
+            type="submit"
+            className="settings-save-btn"
+            disabled={saving}
+            style={{ opacity: saving ? 0.6 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+          <button 
+            type="button"
+            className="settings-cancel-btn"
+            onClick={() => loadSettings()}
+            disabled={saving}
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const AccountingTab = () => (
+  <div className="settings-tab-content">
+    <h2 className="settings-tab-title">💰 Accounting Settings</h2>
+    <p className="settings-tab-description">Double-entry accounting control</p>
+    
+    <div className="settings-section">
+      <h3>Chart of Accounts</h3>
+      <button className="settings-add-btn">+ Add Account</button>
+      <div className="settings-table-container">
+        <table className="settings-table">
+          <thead>
+            <tr>
+              <th>Account Code</th>
+              <th>Account Name</th>
+              <th>Type</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1001</td>
+              <td>Cash</td>
+              <td>Asset</td>
+              <td>
+                <button className="settings-action-btn">Edit</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Account Categories</h3>
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>Cash Accounts</label>
+          <select multiple style={{ minHeight: '100px' }}>
+            <option>Cash - Main</option>
+            <option>Cash - Petty</option>
+          </select>
+        </div>
+        <div className="settings-form-group">
+          <label>Bank Accounts</label>
+          <select multiple style={{ minHeight: '100px' }}>
+            <option>HDFC - Current</option>
+            <option>ICICI - Savings</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Financial Year</h3>
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>Current Financial Year</label>
+          <input type="text" readOnly value="2024-25" />
+        </div>
+        <div className="settings-form-group">
+          <label>Status</label>
+          <input type="text" readOnly value="Active" />
+        </div>
+      </div>
+      <div className="settings-checkbox-group">
+        <label className="settings-checkbox">
+          <input type="checkbox" />
+          <span>Lock financial year (prevent modifications)</span>
+        </label>
+      </div>
+      <button className="settings-action-btn" style={{ marginTop: '10px' }}>
+        Close Financial Year
+      </button>
+    </div>
+  </div>
+);
+
+const PaymentGatewayTab = () => (
+  <div className="settings-tab-content">
+    <h2 className="settings-tab-title">💳 Payment Gateway</h2>
+    <p className="settings-tab-description">Configure payment collection</p>
+    
+    <div className="settings-form">
+      <div className="settings-form-group">
+        <label>Payment Gateway Provider</label>
+        <select>
+          <option value="">Select Gateway</option>
+          <option value="razorpay">Razorpay</option>
+          <option value="payu">PayU</option>
+          <option value="stripe">Stripe</option>
+          <option value="upi">UPI Direct</option>
+        </select>
+      </div>
+
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>API Key</label>
+          <input type="password" placeholder="Enter API key" />
+        </div>
+        <div className="settings-form-group">
+          <label>API Secret</label>
+          <input type="password" placeholder="Enter API secret" />
+        </div>
+      </div>
+
+      <div className="settings-form-group">
+        <label>Society Bank Account Mapping</label>
+        <select>
+          <option>HDFC - Current (Primary)</option>
+          <option>ICICI - Savings</option>
+        </select>
+      </div>
+
+      <div className="settings-checkbox-group">
+        <label className="settings-checkbox">
+          <input type="checkbox" defaultChecked />
+          <span>Auto-generate payment receipts</span>
+        </label>
+        <label className="settings-checkbox">
+          <input type="checkbox" defaultChecked />
+          <span>Auto-reconcile payments</span>
+        </label>
+      </div>
+
+      <div className="settings-form-group">
+        <label>Convenience Fee (%)</label>
+        <input type="number" step="0.01" placeholder="0.00" />
+        <small>Additional fee charged to members (if any)</small>
+      </div>
+
+      <div className="settings-form-actions">
+        <button className="settings-save-btn">Save & Test Connection</button>
+      </div>
+    </div>
+  </div>
+);
+
+const NotificationsTab = () => (
+  <div className="settings-tab-content">
+    <h2 className="settings-tab-title">🔔 Notifications & Communication</h2>
+    <p className="settings-tab-description">Configure member engagement</p>
+    
+    <div className="settings-section">
+      <h3>SMS Provider</h3>
+      <div className="settings-form">
+        <div className="settings-form-group">
+          <label>Provider</label>
+          <select>
+            <option value="">Select Provider</option>
+            <option value="twilio">Twilio</option>
+            <option value="msg91">MSG91</option>
+            <option value="textlocal">TextLocal</option>
+          </select>
+        </div>
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>API Key</label>
+            <input type="password" />
+          </div>
+          <div className="settings-form-group">
+            <label>Sender ID</label>
+            <input type="text" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>WhatsApp Integration</h3>
+      <div className="settings-form-group">
+        <label>WhatsApp Business API</label>
+        <input type="text" placeholder="API endpoint" />
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Email Settings</h3>
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>SMTP Server</label>
+          <input type="text" placeholder="smtp.gmail.com" />
+        </div>
+        <div className="settings-form-group">
+          <label>Port</label>
+          <input type="number" placeholder="587" />
+        </div>
+      </div>
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>Email</label>
+          <input type="email" />
+        </div>
+        <div className="settings-form-group">
+          <label>Password</label>
+          <input type="password" />
+        </div>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Notification Schedule</h3>
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>Bill Reminder (days before due)</label>
+          <input type="number" defaultValue="3" />
+        </div>
+        <div className="settings-form-group">
+          <label>Due Alert (days after due)</label>
+          <input type="number" defaultValue="1" />
+        </div>
+      </div>
+      <div className="settings-checkbox-group">
+        <label className="settings-checkbox">
+          <input type="checkbox" defaultChecked />
+          <span>Send complaint status alerts</span>
+        </label>
+        <label className="settings-checkbox">
+          <input type="checkbox" defaultChecked />
+          <span>Enable push notifications</span>
+        </label>
+      </div>
+    </div>
+
+    <div className="settings-form-actions">
+      <button className="settings-save-btn">Save Changes</button>
+    </div>
+  </div>
+);
+
+const RolesTab = () => (
+  <div className="settings-tab-content">
+    <h2 className="settings-tab-title">🔐 Roles & Permissions</h2>
+    <p className="settings-tab-description">Define access control</p>
+    
+    <div className="settings-section">
+      <h3>Role Management</h3>
+      <div className="settings-table-container">
+        <table className="settings-table">
+          <thead>
+            <tr>
+              <th>Role</th>
+              <th>Approve Members</th>
+              <th>Generate Bills</th>
+              <th>Edit Accounting</th>
+              <th>View Reports</th>
+              <th>Close Complaints</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Admin</strong></td>
+              <td>✅</td>
+              <td>✅</td>
+              <td>✅</td>
+              <td>✅</td>
+              <td>✅</td>
+            </tr>
+            <tr>
+              <td><strong>Treasurer</strong></td>
+              <td>❌</td>
+              <td>✅</td>
+              <td>✅</td>
+              <td>✅</td>
+              <td>❌</td>
+            </tr>
+            <tr>
+              <td><strong>Secretary</strong></td>
+              <td>✅</td>
+              <td>✅</td>
+              <td>❌</td>
+              <td>✅</td>
+              <td>✅</td>
+            </tr>
+            <tr>
+              <td><strong>Auditor</strong></td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>✅</td>
+              <td>❌</td>
+            </tr>
+            <tr>
+              <td><strong>Resident</strong></td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>❌</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <button className="settings-action-btn" style={{ marginTop: '15px' }}>
+        Edit Permissions
+      </button>
+    </div>
+
+    <div className="settings-section">
+      <h3>Assign Roles</h3>
+      <div className="settings-table-container">
+        <table className="settings-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>John Doe</td>
+              <td>john@example.com</td>
+              <td>
+                <select>
+                  <option>Admin</option>
+                  <option>Treasurer</option>
+                  <option>Secretary</option>
+                </select>
+              </td>
+              <td>
+                <button className="settings-action-btn">Save</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+);
+
+const ComplaintsTab = () => (
+  <div className="settings-tab-content">
+    <h2 className="settings-tab-title">🛠️ Complaints & Helpdesk</h2>
+    <p className="settings-tab-description">Configure complaint management</p>
+    
+    <div className="settings-section">
+      <h3>Complaint Categories</h3>
+      <button className="settings-add-btn">+ Add Category</button>
+      <div className="settings-form">
+        <div className="settings-form-group">
+          <input type="text" placeholder="Category name (e.g., Lift, Water, Security)" />
+        </div>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>SLA Timelines</h3>
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>Low Priority (days)</label>
+          <input type="number" defaultValue="7" />
+        </div>
+        <div className="settings-form-group">
+          <label>Medium Priority (days)</label>
+          <input type="number" defaultValue="3" />
+        </div>
+        <div className="settings-form-group">
+          <label>High Priority (hours)</label>
+          <input type="number" defaultValue="24" />
+        </div>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Escalation Rules</h3>
+      <div className="settings-form-group">
+        <label>Auto-escalate after (days)</label>
+        <input type="number" defaultValue="5" />
+      </div>
+      <div className="settings-form-group">
+        <label>Escalate to</label>
+        <select>
+          <option>Secretary</option>
+          <option>Committee</option>
+          <option>Admin</option>
+        </select>
+      </div>
+    </div>
+
+    <div className="settings-checkbox-group">
+      <label className="settings-checkbox">
+        <input type="checkbox" />
+        <span>Auto-close resolved complaints after 7 days</span>
+      </label>
+    </div>
+
+    <div className="settings-form-actions">
+      <button className="settings-save-btn">Save Changes</button>
+    </div>
+  </div>
+);
+
+const AssetsTab = () => (
+  <div className="settings-tab-content">
+    <h2 className="settings-tab-title">🏗️ Assets & Vendor Management</h2>
+    <p className="settings-tab-description">Manage society assets and vendors</p>
+    
+    <div className="settings-section">
+      <h3>Society Assets</h3>
+      <button className="settings-add-btn">+ Add Asset</button>
+      <div className="settings-form">
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>Asset Name</label>
+            <input type="text" placeholder="Lift 1, Generator, etc" />
+          </div>
+          <div className="settings-form-group">
+            <label>Asset Type</label>
+            <select>
+              <option>Lift</option>
+              <option>Generator</option>
+              <option>Water Pump</option>
+              <option>CCTV</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>Installation Date</label>
+            <input type="date" />
+          </div>
+          <div className="settings-form-group">
+            <label>Warranty Expiry</label>
+            <input type="date" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Vendor Management</h3>
+      <button className="settings-add-btn">+ Add Vendor</button>
+      <div className="settings-form">
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>Vendor Name</label>
+            <input type="text" placeholder="Vendor name" />
+          </div>
+          <div className="settings-form-group">
+            <label>Service Type</label>
+            <select>
+              <option>Security</option>
+              <option>Housekeeping</option>
+              <option>AMC</option>
+              <option>Maintenance</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div className="settings-form-row">
+          <div className="settings-form-group">
+            <label>Contract Start Date</label>
+            <input type="date" />
+          </div>
+          <div className="settings-form-group">
+            <label>Contract End Date</label>
+            <input type="date" />
+          </div>
+        </div>
+        <div className="settings-form-group">
+          <label>Reminder Before Expiry (days)</label>
+          <input type="number" defaultValue="30" />
+        </div>
+      </div>
+    </div>
+
+    <div className="settings-checkbox-group">
+      <label className="settings-checkbox">
+        <input type="checkbox" defaultChecked />
+        <span>Send AMC renewal reminders</span>
+      </label>
+      <label className="settings-checkbox">
+        <input type="checkbox" defaultChecked />
+        <span>Send contract expiry alerts</span>
+      </label>
+    </div>
+  </div>
+);
+
+const LegalTab = () => (
+  <div className="settings-tab-content">
+    <h2 className="settings-tab-title">⚖️ Legal & Compliance</h2>
+    <p className="settings-tab-description">Legal documents and compliance tracking</p>
+    
+    <div className="settings-section">
+      <h3>Documents</h3>
+      <div className="settings-form-group">
+        <label>Bye-laws Document</label>
+        <input type="file" accept=".pdf,.doc,.docx" />
+        <button className="settings-action-btn">Upload</button>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Important Dates</h3>
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>AGM Date</label>
+          <input type="date" />
+        </div>
+        <div className="settings-form-group">
+          <label>Audit Due Date</label>
+          <input type="date" />
+        </div>
+      </div>
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>ITR Filing Due Date</label>
+          <input type="date" />
+        </div>
+        <div className="settings-form-group">
+          <label>MCA Filing Due Date</label>
+          <input type="date" />
+        </div>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Reminders</h3>
+      <div className="settings-checkbox-group">
+        <label className="settings-checkbox">
+          <input type="checkbox" defaultChecked />
+          <span>Send AGM reminder 30 days before</span>
+        </label>
+        <label className="settings-checkbox">
+          <input type="checkbox" defaultChecked />
+          <span>Send audit due reminder 15 days before</span>
+        </label>
+        <label className="settings-checkbox">
+          <input type="checkbox" defaultChecked />
+          <span>Send ITR filing reminder</span>
+        </label>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Statutory Document Storage</h3>
+      <div className="settings-form-group">
+        <label>Upload Documents</label>
+        <input type="file" multiple accept=".pdf,.doc,.docx,.jpg,.png" />
+        <small>Upload registration, compliance, and other statutory documents</small>
+      </div>
+    </div>
+  </div>
+);
+
+const DataSecurityTab = () => (
+  <div className="settings-tab-content">
+    <h2 className="settings-tab-title">🔒 Data & Security</h2>
+    <p className="settings-tab-description">Data management and security settings</p>
+    
+    <div className="settings-section">
+      <h3>Backup Settings</h3>
+      <div className="settings-form-group">
+        <label>Backup Schedule</label>
+        <select>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+          <option value="manual">Manual Only</option>
+        </select>
+      </div>
+      <div className="settings-form-group">
+        <label>Last Backup</label>
+        <input type="text" readOnly value="2026-01-06 10:30 AM" />
+        <button className="settings-action-btn">Backup Now</button>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Data Export</h3>
+      <div className="settings-form-row">
+        <button className="settings-action-btn">Export to Excel</button>
+        <button className="settings-action-btn">Export to PDF</button>
+        <button className="settings-action-btn">Export All Data</button>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Audit Trail</h3>
+      <div className="settings-checkbox-group">
+        <label className="settings-checkbox">
+          <input type="checkbox" defaultChecked />
+          <span>Enable audit trail logging</span>
+        </label>
+      </div>
+      <div className="settings-form-group">
+        <label>Log Retention Period (days)</label>
+        <input type="number" defaultValue="365" />
+      </div>
+      <button className="settings-action-btn">View Audit Logs</button>
+    </div>
+
+    <div className="settings-section">
+      <h3>Account Management</h3>
+      <div className="settings-form-group">
+        <label>Account Status</label>
+        <input type="text" readOnly value="Active" />
+      </div>
+      <button className="settings-action-btn danger">Freeze Account</button>
+      <button className="settings-action-btn danger" style={{ marginLeft: '10px' }}>
+        Year Close Lock
+      </button>
+    </div>
+  </div>
+);
+
+const MultiSocietyTab = () => (
+  <div className="settings-tab-content">
+    <h2 className="settings-tab-title">🌐 Multi-Society Mode</h2>
+    <p className="settings-tab-description">Manage multiple societies (SaaS mode)</p>
+    
+    <div className="settings-section">
+      <h3>Current Society</h3>
+      <div className="settings-form-group">
+        <label>Active Society</label>
+        <select>
+          <option>GreenView Apartments</option>
+          <option>Sunshine Residency</option>
+          <option>Garden Heights</option>
+        </select>
+        <button className="settings-action-btn">Switch Society</button>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Society Isolation</h3>
+      <div className="settings-checkbox-group">
+        <label className="settings-checkbox">
+          <input type="checkbox" defaultChecked />
+          <span>Enable data isolation between societies</span>
+        </label>
+        <label className="settings-checkbox">
+          <input type="checkbox" />
+          <span>Allow cross-society user access</span>
+        </label>
+      </div>
+    </div>
+
+    <div className="settings-section">
+      <h3>Subscription Plan</h3>
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>Current Plan</label>
+          <input type="text" readOnly value="Premium" />
+        </div>
+        <div className="settings-form-group">
+          <label>Storage Used</label>
+          <input type="text" readOnly value="2.5 GB / 10 GB" />
+        </div>
+      </div>
+      <div className="settings-form-row">
+        <div className="settings-form-group">
+          <label>User Limit</label>
+          <input type="text" readOnly value="50 / 100 users" />
+        </div>
+        <div className="settings-form-group">
+          <label>Renewal Date</label>
+          <input type="text" readOnly value="2026-02-01" />
+        </div>
+      </div>
+      <button className="settings-action-btn">Upgrade Plan</button>
+    </div>
+
+    <div className="settings-section">
+      <h3>Add New Society</h3>
+      <button className="settings-add-btn">+ Create New Society</button>
+    </div>
+  </div>
+);
+
+export default SettingsScreen;
+
+
