@@ -1,5 +1,5 @@
 /**
- * GharKhata - Main Tab Navigator with Material Community Icons
+ * GharMitra - Main Tab Navigator with Material Community Icons
  * Complete working bottom navigation
  * 
  * File location: src/navigation/MainTabNavigator.tsx

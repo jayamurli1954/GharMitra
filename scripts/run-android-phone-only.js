@@ -186,7 +186,7 @@ try {
   console.error('2. Check USB cable connection');
   console.error('3. Try: adb kill-server && adb start-server');
   console.error('4. Verify device: adb devices');
-  console.error('5. Try uninstalling app first: adb uninstall com.gharkhata');
+  console.error('5. Try uninstalling app first: adb uninstall com.GharMitra');
   process.exit(1);
 }
 

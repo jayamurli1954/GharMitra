@@ -1,5 +1,5 @@
 /**
- * GharKhata - Dashboard Screen with Material Community Icons
+ * GharMitra - Dashboard Screen with Material Community Icons
  * This is a COMPLETE, WORKING version - just copy and replace your existing file
  * 
  * File location: src/screens/dashboard/DashboardScreen.tsx
@@ -140,7 +140,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Dashboard</Text>
-        <Text style={styles.headerSubtitle}>GharKhata Management</Text>
+        <Text style={styles.headerSubtitle}>GharMitra Management</Text>
       </View>
 
       <ScrollView
@@ -159,7 +159,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           <View style={styles.emptyIconContainer}>
             <Icon name="cash-register" size={48} color="#2196F3" />
           </View>
-          <Text style={styles.emptyStateTitle}>Welcome to GharKhata!</Text>
+          <Text style={styles.emptyStateTitle}>Welcome to GharMitra!</Text>
           <Text style={styles.emptyStateText}>
             Add your first transaction to get started with society management
           </Text>

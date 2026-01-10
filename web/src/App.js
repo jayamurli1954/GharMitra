@@ -1,5 +1,5 @@
 /**
- * Web Version of GharKhata App
+ * Web Version of GharMitra App
  * Adapted from React Native App.tsx for web/desktop
  */
 import React, { useEffect, useState, useCallback } from 'react';
