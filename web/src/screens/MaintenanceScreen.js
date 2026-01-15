@@ -24,10 +24,10 @@ const MaintenanceScreen = () => {
     // Sinking Fund
     sinking_calculation_method: 'equal',
     override_sinking_fund: '',
-    // Repair Fund (CR-021)
+    // Repair Fund
     repair_fund_calculation_method: 'equal',
     override_repair_fund: '',
-    // Corpus Fund (CR-021)
+    // Corpus Fund
     corpus_fund_calculation_method: 'equal',
     override_corpus_fund: '',
     // Accounting
@@ -319,23 +319,23 @@ const MaintenanceScreen = () => {
     // Water Amount
     if (bill.water_amount || breakdown.water_charges) {
       const waterAmount = bill.water_amount || breakdown.water_charges || 0;
-      
+
       // Use correct field names from backend: water_per_person_rate and inmates_used
       // Check multiple possible field names for backward compatibility
-      const perPersonRate = breakdown.water_per_person_rate || 
-                           breakdown.water_per_person || 
-                           breakdown.per_person_water_charge || 
-                           0;
-      
+      const perPersonRate = breakdown.water_per_person_rate ||
+        breakdown.water_per_person ||
+        breakdown.per_person_water_charge ||
+        0;
+
       // Use inmates_used (actual count used in calculation) or fallback to occupants
-      const occupantsUsed = breakdown.inmates_used !== undefined && breakdown.inmates_used !== null 
-                           ? breakdown.inmates_used 
-                           : (breakdown.occupants !== undefined && breakdown.occupants !== null 
-                              ? breakdown.occupants 
-                              : (breakdown.number_of_occupants || 0));
-      
+      const occupantsUsed = breakdown.inmates_used !== undefined && breakdown.inmates_used !== null
+        ? breakdown.inmates_used
+        : (breakdown.occupants !== undefined && breakdown.occupants !== null
+          ? breakdown.occupants
+          : (breakdown.number_of_occupants || 0));
+
       let displayDetails = breakdown.water_calculation;
-      
+
       // If calculation string doesn't exist, create it from the values
       if (!displayDetails) {
         if (breakdown.is_vacant || breakdown.vacancy_fee_applied) {
@@ -353,7 +353,7 @@ const MaintenanceScreen = () => {
           displayDetails = '-';
         }
       }
-      
+
       components.push({
         label: 'Water Charges',
         amount: waterAmount,
@@ -367,7 +367,7 @@ const MaintenanceScreen = () => {
       components.push({
         label: 'Fixed Expenses',
         amount: fixedAmount,
-        details: breakdown.fixed_expenses_list ? 
+        details: breakdown.fixed_expenses_list ?
           breakdown.fixed_expenses_list.map(exp => `${exp.name}: ₹${exp.amount}`).join(', ') :
           breakdown.fixed_expenses_calculation
       });
@@ -467,7 +467,7 @@ const MaintenanceScreen = () => {
         </div>
         {bill.bill_number && (
           <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#f0f8ff', borderRadius: '4px', fontSize: '12px' }}>
-            <strong>Bill Number:</strong> {bill.bill_number} | 
+            <strong>Bill Number:</strong> {bill.bill_number} |
             <strong> Month/Year:</strong> {monthNames[(bill.month || 1) - 1]} {bill.year}
           </div>
         )}
@@ -562,7 +562,7 @@ const MaintenanceScreen = () => {
 
           {/* Bill Generation Form */}
           <div className="settings-section">
-            <h2 className="settings-section-title">Generate Monthly Bills (CR-021 Compliant)</h2>
+            <h2 className="settings-section-title">Generate Monthly Bills</h2>
 
             <div className="settings-form">
               <div className="settings-form-row">
@@ -591,7 +591,7 @@ const MaintenanceScreen = () => {
                 </div>
               </div>
 
-              {/* Maintenance Base (CR-021: Sq.ft × Rate, 0 if not used) */}
+              {/* Maintenance Base (Sq.ft × Rate, 0 if not used) */}
               <div className="settings-section" style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
                 <h3>1. Maintenance Base (Sq.ft Calculation)</h3>
                 <div className="settings-form-group">
@@ -603,15 +603,15 @@ const MaintenanceScreen = () => {
                     onChange={(e) => setBillForm({ ...billForm, override_sqft_rate: e.target.value })}
                     placeholder="e.g., 5.00 (or 0 to skip)"
                   />
-                  <small style={{ color: '#666' }}>CR-021: If rate is 0, maintenance not calculated by area</small>
+                  <small style={{ color: '#666' }}>If rate is 0, maintenance not calculated by area</small>
                 </div>
               </div>
 
-              {/* Water Charges (CR-021: Per Person with Adjusted Inmates) */}
+              {/* Water Charges (Per Person with Adjusted Inmates) */}
               <div className="settings-section" style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
                 <h3>2. Water Charges (Per Person Calculation)</h3>
                 <div className="settings-form-group">
-                  <label>Override Total Water Charges (₹) - Leave empty to auto-calculate from 5110+5120</label>
+                  <label>Override Total Water Charges (₹) - Leave empty to auto-calculate from water expense accounts</label>
                   <input
                     type="number"
                     step="0.01"
@@ -623,7 +623,7 @@ const MaintenanceScreen = () => {
 
                 <div style={{ marginTop: '15px' }}>
                   <label style={{ fontWeight: 'bold', marginBottom: '10px', display: 'block' }}>
-                    Adjust Inmates for Water Calculation (CR-021: For guests/vacations {'>'}7 days)
+                    Adjust Inmates for Water Calculation (For guests/vacations {'>'}7 days)
                   </label>
                   <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
                     {flats.map(flat => (
@@ -644,12 +644,12 @@ const MaintenanceScreen = () => {
                 </div>
               </div>
 
-              {/* Fixed Expenses (CR-021: Admin Selection) */}
+              {/* Fixed Expenses (Admin Selection) */}
               <div className="settings-section" style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
                 <h3>3. Fixed Expenses (Admin Selection)</h3>
                 <div className="settings-form-group">
                   <label style={{ fontWeight: 'bold', marginBottom: '10px', display: 'block' }}>
-                    Select Expense Accounts to Include (CR-021: Admin selects which expenses to include)
+                    Select Expense Accounts to Include (Admin selects which expenses to include)
                   </label>
                   {expenseAccounts.length === 0 ? (
                     <div style={{ padding: '15px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px', color: '#856404' }}>
@@ -756,7 +756,7 @@ const MaintenanceScreen = () => {
                 </div>
               </div>
 
-              {/* Sinking Fund (CR-021) */}
+              {/* Sinking Fund */}
               <div className="settings-section" style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
                 <h3>4. Sinking Fund</h3>
                 <div className="settings-form-row">
@@ -783,9 +783,9 @@ const MaintenanceScreen = () => {
                 </div>
               </div>
 
-              {/* Repair Fund (CR-021) */}
+              {/* Repair Fund */}
               <div className="settings-section" style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
-                <h3>5. Repair Fund (CR-021)</h3>
+                <h3>5. Repair Fund</h3>
                 <div className="settings-form-row">
                   <div className="settings-form-group">
                     <label>Calculation Method</label>
@@ -810,9 +810,9 @@ const MaintenanceScreen = () => {
                 </div>
               </div>
 
-              {/* Corpus Fund (CR-021) */}
+              {/* Corpus Fund */}
               <div className="settings-section" style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
-                <h3>6. Corpus Fund (CR-021)</h3>
+                <h3>6. Corpus Fund</h3>
                 <div className="settings-form-row">
                   <div className="settings-form-group">
                     <label>Calculation Method</label>
@@ -839,7 +839,7 @@ const MaintenanceScreen = () => {
 
               {/* Accounting Posting */}
               <div className="settings-section" style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f0f8ff', borderRadius: '8px' }}>
-                <h3>7. Accounting Posting (CR-021)</h3>
+                <h3>7. Accounting Posting</h3>
                 <div className="settings-form-group">
                   <label>
                     <input
@@ -850,7 +850,7 @@ const MaintenanceScreen = () => {
                     <span style={{ marginLeft: '8px' }}>Auto-post to Accounting (Debit 1100, Credit 4000/4010/etc)</span>
                   </label>
                   <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
-                    CR-021: Automatically creates journal entries with double-entry validation
+                    Automatically creates journal entries with double-entry validation
                   </small>
                 </div>
               </div>
@@ -1196,14 +1196,14 @@ const MaintenanceScreen = () => {
                     console.log('Bill _id:', selectedBillForAction._id, 'Type:', typeof selectedBillForAction._id);
                     console.log('Bill flat_id:', selectedBillForAction.flat_id);
                     console.log('Bill flat_number:', selectedBillForAction.flat_number);
-                    
+
                     // Try both id and _id (backend model accepts both)
                     // Also check if it's nested or has different field names
-                    const billId = selectedBillForAction.id || 
-                                  selectedBillForAction._id || 
-                                  selectedBillForAction.bill_id ||
-                                  (selectedBillForAction.bill && selectedBillForAction.bill.id);
-                    
+                    const billId = selectedBillForAction.id ||
+                      selectedBillForAction._id ||
+                      selectedBillForAction.bill_id ||
+                      (selectedBillForAction.bill && selectedBillForAction.bill.id);
+
                     if (!billId) {
                       const errorMsg = 'Bill ID is missing. Available fields: ' + Object.keys(selectedBillForAction).join(', ');
                       console.error(errorMsg);
@@ -1212,27 +1212,27 @@ const MaintenanceScreen = () => {
                       return;
                     }
                     console.log('Sending bill_id as:', billId, 'Type:', typeof billId);
-                    
+
                     const payload = {
                       bill_id: billId,
                       reversal_reason: reverseForm.reversal_reason,
                       committee_approval: reverseForm.committee_approval || null
                     };
                     console.log('Request payload:', payload);
-                    
+
                     const response = await api.post(`/maintenance/reverse-bill`, payload);
                     console.log('Bill reversal response:', response.data);
                     setMessage({ type: 'success', text: `Bill reversed successfully for ${selectedBillForAction.flat_number}. You can now regenerate it.` });
-                    
+
                     // Reload bills first to confirm reversal
                     await loadBillsForPeriod();
-                    
+
                     // Close modal and prepare for regeneration
                     const billForRegen = { ...selectedBillForAction }; // Keep a copy
                     setShowReverseModal(false);
                     setSelectedBillForAction(null);
                     setReverseForm({ reversal_reason: '', committee_approval: '' });
-                    
+
                     // Then show regenerate modal after a short delay
                     setTimeout(() => {
                       setSelectedBillForAction(billForRegen);

@@ -1440,6 +1440,14 @@ const PaymentVoucherTab = () => {
   const [bankAccounts, setBankAccounts] = useState([]);
   const [flats, setFlats] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  // Helper to get current month in YYYY-MM format for type="month" input
+  const getCurrentMonthInput = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  };
+
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     account_code: '',
@@ -1448,7 +1456,7 @@ const PaymentVoucherTab = () => {
     unit_price: '',
     payment_method: 'bank',
     description: '',
-    expense_month: '',
+    expense_month: getCurrentMonthInput(), // Default to current month
     flat_id: '',
     reference: '',
     bank_account_code: '',
@@ -1519,14 +1527,16 @@ const PaymentVoucherTab = () => {
       }
 
       const finalDescription = formData.description || 'Payment';
-      const resp = await transactionsService.createPayment({
+      const paymentData = {
         ...formData,
         amount: parseFloat(formData.amount),
         quantity: formData.qty ? parseFloat(formData.qty) : undefined,
         unit_price: formData.unit_price ? parseFloat(formData.unit_price) : undefined,
         expense_month: formData.expense_month ? formatMonthYear(formData.expense_month) : undefined,
         description: finalDescription
-      });
+      };
+      console.log('Creating payment with expense_month:', paymentData.expense_month, 'from input:', formData.expense_month);
+      const resp = await transactionsService.createPayment(paymentData);
 
       // Handle Multiple Attachment Uploads
       if (selectedFiles.length > 0 && resp.journal_entry_id) {

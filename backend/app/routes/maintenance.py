@@ -503,14 +503,19 @@ async def get_expense_accounts_for_period(
     end_date = date(year, month, last_day)
     
     # Get all expense type accounts for this society
-    # CR-021_revised: Exclude 5110 (Water Charges - Tanker) and 5120 (Water Charges - Government)
+    # CR-021_revised: Exclude Water Charges (Dynamic Lookup)
     # as they are part of water charges, not fixed expenses
     result = await db.execute(
         select(AccountCodeDB).where(
             and_(
                 AccountCodeDB.society_id == current_user.society_id,
+                AccountCodeDB.society_id == current_user.society_id,
                 AccountCodeDB.type == AccountType.EXPENSE,
-                AccountCodeDB.code.notin_(["5110", "5120"])  # CR-021_revised: Exclude water charges
+                # Dynamic exclusion: Exclude Water Charges based on utility_type
+                or_(
+                    AccountCodeDB.utility_type.is_(None),
+                    AccountCodeDB.utility_type.notin_(['water_tanker', 'water_municipal'])
+                )
             )
         ).order_by(AccountCodeDB.code)
     )
@@ -525,18 +530,17 @@ async def get_expense_accounts_for_period(
                 and_(
                     Transaction.society_id == current_user.society_id,
                     Transaction.account_code == acct.code,
-                    # Check expense_month first, or fallback to date if expense_month is NULL or doesn't match
-                    # Also handle cases where expense_month might be in wrong format (date string)
+                    # Check expense_month with flexible matching (December, 2025 OR Dec, 2025 OR Dec. 2025)
+                    # Also handle cases where expense_month might be in wrong format
                     or_(
+                        # Exact match
                         Transaction.expense_month == expense_month_str,
+                        # Match with abbreviated month (Dec, 2025 or Dec., 2025)
+                        Transaction.expense_month.like(f"{month_names[month - 1][:3]}%, {year}"),
+                        Transaction.expense_month.like(f"{month_names[month - 1][:3]}.%, {year}"),
+                        # Fallback to transaction date if expense_month is NULL
                         and_(
                             Transaction.expense_month.is_(None),
-                            Transaction.date >= start_date,
-                            Transaction.date <= end_date
-                        ),
-                        # Handle wrong expense_month format - check date field instead
-                        and_(
-                            Transaction.expense_month != expense_month_str,
                             Transaction.date >= start_date,
                             Transaction.date <= end_date
                         )
@@ -571,7 +575,8 @@ async def get_collectible_expenses(
     """
     Fetch potential expenses for the month to be included in maintenance bills.
     Checks expense_month field first (e.g., "December, 2025"), falls back to date if expense_month is NULL.
-    Includes Water (5110, 5120) and any other marked fixed expenses.
+    Checks expense_month field first (e.g., "December, 2025"), falls back to date if expense_month is NULL.
+    Includes Water (Dynamic) and any other marked fixed expenses.
     """
     # Format expense_month string (e.g., "December, 2025")
     month_names = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -583,41 +588,67 @@ async def get_collectible_expenses(
     last_day = calendar.monthrange(year, month)[1]
     end_date = date(year, month, last_day)
     
-    # 1. Fetch Water Tanker (5110) - check expense_month first, fallback to date
-    result = await db.execute(
-        select(func.sum(Transaction.amount)).where(
+    # 1. Fetch Water Tanker Codes
+    tanker_codes_result = await db.execute(
+        select(AccountCodeDB.code).where(
             and_(
-                Transaction.society_id == current_user.society_id,
-                Transaction.account_code == "5110",
-                or_(
-                    Transaction.expense_month == expense_month_str,
-                    and_(
-                        Transaction.expense_month.is_(None),
-                        Transaction.date.between(start_date, end_date)
+                AccountCodeDB.society_id == current_user.society_id,
+                AccountCodeDB.utility_type == 'water_tanker'
+            )
+        )
+    )
+    tanker_codes = tanker_codes_result.scalars().all() or []
+
+    if tanker_codes:
+        result = await db.execute(
+            select(func.sum(Transaction.amount)).where(
+                and_(
+                    Transaction.society_id == current_user.society_id,
+                    Transaction.account_code.in_(tanker_codes),
+                    or_(
+                        Transaction.expense_month == expense_month_str,
+                        and_(
+                            Transaction.expense_month.is_(None),
+                            Transaction.date.between(start_date, end_date)
+                        )
                     )
                 )
             )
         )
-    )
-    water_tanker = Decimal(str(result.scalar() or "0.00"))
+        water_tanker = Decimal(str(result.scalar() or "0.00"))
+    else:
+        water_tanker = Decimal("0.00")
     
-    # 2. Fetch Water Govt (5120) - check expense_month first, fallback to date
-    result = await db.execute(
-        select(func.sum(Transaction.amount)).where(
+    # 2. Fetch Water Govt Codes
+    govt_codes_result = await db.execute(
+        select(AccountCodeDB.code).where(
             and_(
-                Transaction.society_id == current_user.society_id,
-                Transaction.account_code == "5120",
-                or_(
-                    Transaction.expense_month == expense_month_str,
-                    and_(
-                        Transaction.expense_month.is_(None),
-                        Transaction.date.between(start_date, end_date)
+                AccountCodeDB.society_id == current_user.society_id,
+                AccountCodeDB.utility_type == 'water_municipal'
+            )
+        )
+    )
+    govt_codes = govt_codes_result.scalars().all() or []
+
+    if govt_codes:
+        result = await db.execute(
+            select(func.sum(Transaction.amount)).where(
+                and_(
+                    Transaction.society_id == current_user.society_id,
+                    Transaction.account_code.in_(govt_codes),
+                    or_(
+                        Transaction.expense_month == expense_month_str,
+                        and_(
+                            Transaction.expense_month.is_(None),
+                            Transaction.date.between(start_date, end_date)
+                        )
                     )
                 )
             )
         )
-    )
-    water_govt = Decimal(str(result.scalar() or "0.00"))
+        water_govt = Decimal(str(result.scalar() or "0.00"))
+    else:
+        water_govt = Decimal("0.00")
     
     # 3. Fetch all account codes marked as fixed expenses
     result = await db.execute(
@@ -910,23 +941,40 @@ async def generate_bills(
         last_day = calendar.monthrange(request.year, request.month)[1]
         end_date = date(request.year, request.month, last_day)
         
-        # Check expense_month first, fallback to date if expense_month is NULL
-        water_res = await db.execute(
-            select(func.sum(Transaction.amount)).where(
+        # CR-021: Dynamic water charges lookup - get all water-related account codes
+        # Find all account codes with utility_type in ['water_tanker', 'water_municipal']
+        water_accounts_res = await db.execute(
+            select(AccountCodeDB.code).where(
                 and_(
-                    Transaction.society_id == current_user.society_id,
-                    Transaction.account_code.in_(["5110", "5120"]),
-                    or_(
-                        Transaction.expense_month == expense_month_str,
-                        and_(
-                            Transaction.expense_month.is_(None),
-                            Transaction.date.between(start_date, end_date)
+                    AccountCodeDB.society_id == current_user.society_id,
+                    AccountCodeDB.utility_type.in_(['water_tanker', 'water_municipal'])
+                )
+            )
+        )
+        water_account_codes = [row[0] for row in water_accounts_res.fetchall()]
+
+        # If no water accounts found, calculate water as 0
+        if not water_account_codes:
+            total_water = Decimal("0.00")
+        else:
+            # Sum transactions for these water account codes
+            # Check expense_month first, fallback to date if expense_month is NULL
+            water_res = await db.execute(
+                select(func.sum(Transaction.amount)).where(
+                    and_(
+                        Transaction.society_id == current_user.society_id,
+                        Transaction.account_code.in_(water_account_codes),
+                        or_(
+                            Transaction.expense_month == expense_month_str,
+                            and_(
+                                Transaction.expense_month.is_(None),
+                                Transaction.date.between(start_date, end_date)
+                            )
                         )
                     )
                 )
             )
-        )
-        total_water = Decimal(str(water_res.scalar() or "0.00"))
+            total_water = Decimal(str(water_res.scalar() or "0.00"))
 
     # Calculate total fixed expenses if using selection
     total_fixed_from_selection = Decimal("0.00")
