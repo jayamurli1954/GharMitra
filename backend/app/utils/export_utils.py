@@ -464,6 +464,229 @@ class ExcelExporter:
         return output
     
     @staticmethod
+    def create_trial_balance_excel(
+        report_data: Dict[str, Any],
+        society_info: Dict[str, Any]
+    ) -> BytesIO:
+        """Create Excel file for Trial Balance"""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Trial Balance"
+        
+        # Styles
+        header_font = Font(name='Arial', size=12, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        total_fill = PatternFill(start_color="F0F0F0", end_color="F0F0F0", fill_type="solid")
+        border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+        
+        # Header
+        ws.merge_cells('A1:D1')
+        ws['A1'] = society_info.get('name', 'Society Name')
+        ws['A1'].font = Font(size=14, bold=True)
+        ws['A1'].alignment = Alignment(horizontal='center')
+        
+        ws.merge_cells('A2:D2')
+        ws['A2'] = f"TRIAL BALANCE AS ON {report_data.get('as_on_date', '')}"
+        ws['A2'].alignment = Alignment(horizontal='center')
+        
+        # Column headers
+        headers = ['Account Code', 'Account Name', 'Debit Balance', 'Credit Balance']
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=4, column=col)
+            cell.value = header
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center')
+            
+        # Data
+        row = 5
+        for item in report_data.get('items', []):
+            ws.cell(row=row, column=1, value=item.get('account_code', '')).border = border
+            ws.cell(row=row, column=2, value=item.get('account_name', '')).border = border
+            
+            d_cell = ws.cell(row=row, column=3, value=item.get('debit_balance', 0))
+            d_cell.number_format = '#,##0.00'
+            d_cell.border = border
+            
+            c_cell = ws.cell(row=row, column=4, value=item.get('credit_balance', 0))
+            c_cell.number_format = '#,##0.00'
+            c_cell.border = border
+            row += 1
+            
+        # Total row
+        ws.cell(row=row, column=1).border = border
+        ws.cell(row=row, column=2, value="TOTAL").font = Font(bold=True)
+        ws.cell(row=row, column=2).fill = total_fill
+        ws.cell(row=row, column=2).border = border
+        
+        td_cell = ws.cell(row=row, column=3, value=report_data.get('total_debit', 0))
+        td_cell.font = Font(bold=True)
+        td_cell.number_format = '#,##0.00'
+        td_cell.fill = total_fill
+        td_cell.border = border
+        
+        tc_cell = ws.cell(row=row, column=4, value=report_data.get('total_credit', 0))
+        tc_cell.font = Font(bold=True)
+        tc_cell.number_format = '#,##0.00'
+        tc_cell.fill = total_fill
+        tc_cell.border = border
+        
+        # Adjust widths
+        ws.column_dimensions['A'].width = 15
+        ws.column_dimensions['B'].width = 40
+        ws.column_dimensions['C'].width = 18
+        ws.column_dimensions['D'].width = 18
+        
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return output
+
+    @staticmethod
+    def create_income_and_expenditure_excel(
+        report_data: Dict[str, Any],
+        society_info: Dict[str, Any]
+    ) -> BytesIO:
+        """Create Excel file for Income & Expenditure"""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Income & Expenditure"
+        
+        # Styles
+        header_font = Font(name='Arial', size=12, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+        
+        # Header
+        ws.merge_cells('A1:C1')
+        ws['A1'] = society_info.get('name', 'Society Name')
+        ws['A1'].font = Font(size=14, bold=True)
+        ws['A1'].alignment = Alignment(horizontal='center')
+        
+        ws.merge_cells('A2:C2')
+        ws['A2'] = f"INCOME & EXPENDITURE FOR {report_data.get('from_date', '')} TO {report_data.get('to_date', '')}"
+        ws['A2'].alignment = Alignment(horizontal='center')
+        
+        # Summary
+        row = 4
+        ws.cell(row=row, column=1, value="Total Income:").font = Font(bold=True)
+        ws.cell(row=row, column=2, value=report_data.get('total_income', 0)).number_format = '#,##0.00'
+        row += 1
+        ws.cell(row=row, column=1, value="Total Expenditure:").font = Font(bold=True)
+        ws.cell(row=row, column=2, value=report_data.get('total_expenditure', 0)).number_format = '#,##0.00'
+        row += 1
+        net_income = report_data.get('net_income', 0)
+        cell = ws.cell(row=row, column=1, value="Net Surplus/(Deficit):")
+        cell.font = Font(bold=True)
+        val_cell = ws.cell(row=row, column=2, value=net_income)
+        val_cell.font = Font(bold=True)
+        val_cell.number_format = '#,##0.00'
+        
+        row += 2
+        
+        # Details
+        def add_section(title, items):
+            nonlocal row
+            ws.cell(row=row, column=1, value=title).font = Font(bold=True, size=12)
+            row += 1
+            headers = ['Code', 'Account Name', 'Amount']
+            for col, h in enumerate(headers, 1):
+                c = ws.cell(row=row, column=col)
+                c.value = h
+                c.font = header_font
+                c.fill = header_fill
+                c.border = border
+            row += 1
+            for item in items:
+                ws.cell(row=row, column=1, value=item.get('account_code', '')).border = border
+                ws.cell(row=row, column=2, value=item.get('account_name', '')).border = border
+                amt_cell = ws.cell(row=row, column=3, value=item.get('amount', 0))
+                amt_cell.number_format = '#,##0.00'
+                amt_cell.border = border
+                row += 1
+            row += 1
+
+        add_section("INCOME", report_data.get('income_items', []))
+        add_section("EXPENDITURE", report_data.get('expenditure_items', []))
+        
+        # Adjust widths
+        ws.column_dimensions['A'].width = 15
+        ws.column_dimensions['B'].width = 50
+        ws.column_dimensions['C'].width = 20
+        
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return output
+
+    @staticmethod
+    def create_balance_sheet_excel(
+        report_data: Dict[str, Any],
+        society_info: Dict[str, Any]
+    ) -> BytesIO:
+        """Create Excel file for Balance Sheet"""
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Balance Sheet"
+        
+        # Header
+        ws.merge_cells('A1:D1')
+        ws['A1'] = society_info.get('name', 'Society Name')
+        ws['A1'].font = Font(size=14, bold=True)
+        ws['A1'].alignment = Alignment(horizontal='center')
+        
+        ws.merge_cells('A2:D2')
+        ws['A2'] = f"BALANCE SHEET AS ON {report_data.get('as_on_date', '')}"
+        ws['A2'].alignment = Alignment(horizontal='center')
+        
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+        row = 4
+        # Liabilities & Assets side by side-ish or sequential
+        # Let's do sequential for simplicity in Excel
+        
+        def add_bs_section(title, items, total_label, total_val):
+            nonlocal row
+            ws.cell(row=row, column=1, value=title).font = Font(bold=True, size=12)
+            row += 1
+            ws.cell(row=row, column=1, value="Account").font = header_font
+            ws.cell(row=row, column=1).fill = header_fill
+            ws.cell(row=row, column=1).border = border
+            ws.cell(row=row, column=2, value="Amount").font = header_font
+            ws.cell(row=row, column=2).fill = header_fill
+            ws.cell(row=row, column=2).border = border
+            row += 1
+            for item in items:
+                ws.cell(row=row, column=1, value=item.get('account_name', '')).border = border
+                a_cell = ws.cell(row=row, column=2, value=item.get('balance', 0))
+                a_cell.number_format = '#,##0.00'
+                a_cell.border = border
+                row += 1
+            ws.cell(row=row, column=1, value=total_label).font = Font(bold=True)
+            ws.cell(row=row, column=1).border = border
+            t_cell = ws.cell(row=row, column=2, value=total_val)
+            t_cell.font = Font(bold=True)
+            t_cell.number_format = '#,##0.00'
+            t_cell.border = border
+            row += 2
+
+        add_bs_section("ASSETS", report_data.get('assets', []), "Total Assets", report_data.get('total_assets', 0))
+        # Combine Liabilities and Capital
+        liab_cap = report_data.get('liabilities', []) + report_data.get('capital', [])
+        add_bs_section("LIABILITIES & CAPITAL", liab_cap, "Total Liabilities & Capital", report_data.get('total_liabilities_capital', 0))
+
+        ws.column_dimensions['A'].width = 50
+        ws.column_dimensions['B'].width = 20
+        
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return output
+
+    @staticmethod
     def create_simple_report_excel(
         report_data: Dict[str, Any],
         society_info: Dict[str, Any],
@@ -906,6 +1129,186 @@ class PDFExporter:
         return buffer
     
     @staticmethod
+    def create_trial_balance_pdf(
+        report_data: Dict[str, Any],
+        society_info: Dict[str, Any]
+    ) -> BytesIO:
+        """Create a professional Trial Balance PDF"""
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, margin=0.5*inch)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Header
+        elements.append(Paragraph(society_info.get('name', 'Society Name'), styles['Title']))
+        elements.append(Paragraph(f"TRIAL BALANCE AS ON {report_data.get('as_on_date', '')}", styles['Heading2']))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Table data
+        table_data = [['Account Code', 'Account Name', 'Debit Balance', 'Credit Balance']]
+        for item in report_data.get('items', []):
+            table_data.append([
+                item.get('account_code', ''),
+                item.get('account_name', ''),
+                f"₹{item.get('debit_balance', 0):,.2f}" if item.get('debit_balance', 0) > 0 else '-',
+                f"₹{item.get('credit_balance', 0):,.2f}" if item.get('credit_balance', 0) > 0 else '-'
+            ])
+            
+        # Total row
+        table_data.append([
+            '', 'TOTAL',
+            f"₹{report_data.get('total_debit', 0):,.2f}",
+            f"₹{report_data.get('total_credit', 0):,.2f}"
+        ])
+        
+        table = Table(table_data, colWidths=[1*inch, 3*inch, 1.25*inch, 1.25*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#366092')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (2, 0), (3, -1), 'RIGHT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f0f0f0')),
+        ]))
+        elements.append(table)
+        
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def create_income_and_expenditure_pdf(
+        report_data: Dict[str, Any],
+        society_info: Dict[str, Any]
+    ) -> BytesIO:
+        """Create a professional Income & Expenditure PDF"""
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, margin=0.5*inch)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Header
+        elements.append(Paragraph(society_info.get('name', 'Society Name'), styles['Title']))
+        elements.append(Paragraph(f"INCOME & EXPENDITURE ACCOUNT FOR {report_data.get('from_date', '')} TO {report_data.get('to_date', '')}", styles['Heading2']))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Summary Row (Income vs Expenditure)
+        summary_data = [
+            [f"Total Income: ₹{report_data.get('total_income', 0):,.2f}", f"Total Expenditure: ₹{report_data.get('total_expenditure', 0):,.2f}"]
+        ]
+        summary_table = Table(summary_data, colWidths=[3.25*inch, 3.25*inch])
+        summary_table.setStyle(TableStyle([
+            ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 12),
+            ('ALIGN', (0,0), (0,0), 'LEFT'),
+            ('ALIGN', (1,0), (1,0), 'RIGHT'),
+            ('TEXTCOLOR', (0,0), (0,0), colors.HexColor('#2e7d32')), # Green for income
+            ('TEXTCOLOR', (1,0), (1,0), colors.HexColor('#c62828')), # Red for expenditure
+        ]))
+        elements.append(summary_table)
+        elements.append(Spacer(1, 0.1*inch))
+        
+        # Net Surplus/Deficit
+        net_income = report_data.get('net_income', 0)
+        net_text = f"NET SURPLUS: ₹{net_income:,.2f}" if net_income >= 0 else f"NET DEFICIT: ₹{abs(net_income):,.2f}"
+        net_color = colors.HexColor('#2e7d32') if net_income >= 0 else colors.HexColor('#c62828')
+        elements.append(Paragraph(f"<b>{net_text}</b>", ParagraphStyle('NetStyle', parent=styles['Normal'], fontSize=14, textColor=net_color, alignment=TA_CENTER)))
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Details (Income)
+        elements.append(Paragraph("<b>INCOME DETAILS</b>", styles['Heading3']))
+        income_data = [['Account Code', 'Account Name', 'Amount (₹)']]
+        for item in report_data.get('income_items', []):
+            income_data.append([item.get('account_code', ''), item.get('account_name', ''), f"{item.get('amount', 0):,.2f}"])
+        
+        if len(income_data) > 1:
+            i_table = Table(income_data, colWidths=[1*inch, 4*inch, 1.5*inch])
+            i_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+            ]))
+            elements.append(i_table)
+        else:
+            elements.append(Paragraph("No income recorded for this period.", styles['Normal']))
+            
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Details (Expenditure)
+        elements.append(Paragraph("<b>EXPENDITURE DETAILS</b>", styles['Heading3']))
+        exp_data = [['Account Code', 'Account Name', 'Amount (₹)']]
+        for item in report_data.get('expenditure_items', []):
+            exp_data.append([item.get('account_code', ''), item.get('account_name', ''), f"{item.get('amount', 0):,.2f}"])
+            
+        if len(exp_data) > 1:
+            e_table = Table(exp_data, colWidths=[1*inch, 4*inch, 1.5*inch])
+            e_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+            ]))
+            elements.append(e_table)
+        else:
+            elements.append(Paragraph("No expenditure recorded for this period.", styles['Normal']))
+            
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def create_balance_sheet_pdf(
+        report_data: Dict[str, Any],
+        society_info: Dict[str, Any]
+    ) -> BytesIO:
+        """Create a professional Balance Sheet PDF"""
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, margin=0.5*inch)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Header
+        elements.append(Paragraph(society_info.get('name', 'Society Name'), styles['Title']))
+        elements.append(Paragraph(f"BALANCE SHEET AS ON {report_data.get('as_on_date', '')}", styles['Heading2']))
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Assets Table
+        elements.append(Paragraph("<b>ASSETS</b>", styles['Heading3']))
+        asset_data = [['Account Name', 'Amount (₹)']]
+        for item in report_data.get('assets', []):
+            asset_data.append([item.get('account_name', ''), f"{item.get('balance', 0):,.2f}"])
+        
+        asset_table = Table(asset_data, colWidths=[5*inch, 1.5*inch])
+        asset_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ]))
+        elements.append(asset_table)
+        elements.append(Paragraph(f"<b>Total Assets: ₹{report_data.get('total_assets', 0):,.2f}</b>", ParagraphStyle('TotalStyle', parent=styles['Normal'], alignment=TA_RIGHT)))
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Liabilities & Capital Table
+        elements.append(Paragraph("<b>LIABILITIES & CAPITAL</b>", styles['Heading3']))
+        liab_data = [['Account Name', 'Amount (₹)']]
+        # Combine Liabilities and Capital
+        all_liab = report_data.get('liabilities', []) + report_data.get('capital', [])
+        for item in all_liab:
+            liab_data.append([item.get('account_name', ''), f"{item.get('balance', 0):,.2f}"])
+            
+        liab_table = Table(liab_data, colWidths=[5*inch, 1.5*inch])
+        liab_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ]))
+        elements.append(liab_table)
+        elements.append(Paragraph(f"<b>Total Liabilities & Capital: ₹{report_data.get('total_liabilities_capital', 0):,.2f}</b>", ParagraphStyle('TotalStyle', parent=styles['Normal'], alignment=TA_RIGHT)))
+        
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
     def create_simple_report_pdf(
         report_data: Dict[str, Any],
         society_info: Dict[str, Any],
@@ -1000,3 +1403,414 @@ class PDFExporter:
         
         return buffer
 
+    @staticmethod
+    def create_formal_receipt_pdf(
+        voucher_data: Dict[str, Any],
+        society_info: Dict[str, Any]
+    ) -> BytesIO:
+        """
+        Create a formal, member-friendly Receipt PDF
+        Based on user redesign request
+        """
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=50,
+            leftMargin=50,
+            topMargin=50,
+            bottomMargin=50
+        )
+        
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Styles
+        title_style = ParagraphStyle(
+            'ReceiptTitle',
+            parent=styles['Heading1'],
+            fontSize=22, # Slightly smaller for better proportions
+            textColor=colors.HexColor('#2e7d32'),
+            alignment=TA_LEFT,
+            fontName='Helvetica-Bold',
+            leftIndent=0,
+            spaceAfter=0
+        )
+        
+        soc_name_style = ParagraphStyle(
+            'SocietyName',
+            parent=styles['Normal'],
+            fontSize=14,
+            fontName='Helvetica-Bold',
+            alignment=TA_RIGHT
+        )
+        
+        soc_details_style = ParagraphStyle(
+            'SocietyDetails',
+            parent=styles['Normal'],
+            fontSize=9,
+            alignment=TA_RIGHT,
+            textColor=colors.grey
+        )
+        
+        label_style = ParagraphStyle(
+            'LabelStyle',
+            parent=styles['Normal'],
+            fontSize=10,
+            fontName='Helvetica-Bold'
+        )
+        
+        val_style = ParagraphStyle(
+            'ValueStyle',
+            parent=styles['Normal'],
+            fontSize=10
+        )
+
+        content_style = ParagraphStyle(
+            'ContentStyle',
+            parent=styles['Normal'],
+            fontSize=11,
+            leading=16,
+            spaceBefore=5,
+            spaceAfter=5
+        )
+
+        # Header Construction - Logo centered above society name
+        logo_url = society_info.get('logo_url')
+        logo = None
+        if logo_url:
+            try:
+                import os
+                import requests
+                from reportlab.platypus import Image
+
+                # Check if it's a local file path or URL
+                if logo_url.startswith(('http://', 'https://')):
+                    # Download from URL
+                    response = requests.get(logo_url, timeout=5)
+                    if response.status_code == 200:
+                        logo = Image(BytesIO(response.content), width=0.8*inch, height=0.8*inch)
+                elif os.path.exists(logo_url):
+                    # Load from local file
+                    logo = Image(logo_url, width=0.8*inch, height=0.8*inch)
+                else:
+                    logger.warning(f"Logo file not found: {logo_url}")
+            except Exception as e:
+                logger.warning(f"Could not load logo: {e}")
+
+        # Society info with logo centered above
+        if logo:
+            # Center the logo
+            logo_center_style = ParagraphStyle(
+                'LogoCenter',
+                parent=styles['Normal'],
+                alignment=TA_CENTER
+            )
+            elements.append(logo)
+            elements.append(Spacer(1, 0.1*inch))
+
+        # Centered society name and address
+        center_name_style = ParagraphStyle(
+            'CenterName',
+            parent=styles['Normal'],
+            fontSize=14,
+            fontName='Helvetica-Bold',
+            alignment=TA_CENTER,
+            spaceAfter=4
+        )
+
+        center_details_style = ParagraphStyle(
+            'CenterDetails',
+            parent=styles['Normal'],
+            fontSize=9,
+            alignment=TA_CENTER,
+            textColor=colors.grey,
+            spaceAfter=2
+        )
+
+        elements.append(Paragraph(society_info.get('name', '').upper(), center_name_style))
+        if society_info.get('address'):
+            elements.append(Paragraph(society_info.get('address', ''), center_details_style))
+        if society_info.get('email'):
+            elements.append(Paragraph(society_info.get('email', ''), center_details_style))
+        if society_info.get('pan_no'):
+            elements.append(Paragraph(f"PAN: {society_info['pan_no']}", center_details_style))
+
+        elements.append(Spacer(1, 0.2*inch))
+
+        # Receipt title and details in a 2-column layout
+        date_str = voucher_data.get('date', 'N/A')
+        rv_no = voucher_data.get('voucher_number', 'N/A')
+        ref_val = voucher_data.get('reference', 'N/A')
+
+        # Left side: Receipt title and labels
+        labels_info = [
+            [Paragraph("<b>Date:</b>", label_style), Paragraph(date_str, val_style)],
+            [Paragraph("<b>Receipt No:</b>", label_style), Paragraph(rv_no, val_style)],
+            [Paragraph("<b>Ref:</b>", label_style), Paragraph(ref_val, val_style)],
+        ]
+        labels_table = Table(labels_info, colWidths=[1.1*inch, 1.4*inch])
+        labels_table.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ]))
+
+        # Header row with Receipt title and labels
+        header_row = Table([
+            [Paragraph("Receipt", title_style), ""]
+        ], colWidths=[3*inch, 3.5*inch])
+        header_row.setStyle(TableStyle([
+            ('ALIGN', (0,0), (0,0), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('LINEBELOW', (0,0), (-1,0), 1, colors.grey),
+            ('BOTTOMPADDING', (0,0), (-1,0), 10),
+        ]))
+
+        elements.append(header_row)
+        elements.append(Spacer(1, 0.1*inch))
+        elements.append(labels_table)
+        elements.append(Spacer(1, 0.3 * inch))
+        
+        # Summary Details (More formal with labels)
+        member_name = voucher_data.get('member_name', 'Member')
+        flat_number = voucher_data.get('flat_number', 'N/A')
+        amount = voucher_data.get('total_debit', 0)
+        amount_words = voucher_data.get('amount_in_words', '')
+        description = voucher_data.get('description', 'Monthly Maintenance Dues')
+        
+        # Using Rs. symbol for PDF compatibility
+        rupee_symbol = "Rs."
+
+        details_table_data = [
+            [Paragraph("<b>Received From:</b>", label_style), Paragraph(member_name, val_style)],
+            [Paragraph("<b>Flat No:</b>", label_style), Paragraph(flat_number if flat_number != 'N/A' else '-', val_style)],
+            [Paragraph("<b>A Sum of:</b>", label_style), Paragraph(f"<b>{rupee_symbol} {amount:,.2f}</b> ({amount_words})", val_style)],
+            [Paragraph("<b>Towards:</b>", label_style), Paragraph(description, val_style)],
+        ]
+        
+        details_table = Table(details_table_data, colWidths=[1.5*inch, 4*inch])
+        details_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('ALIGN', (0,0), (0,-1), 'LEFT'),
+        ]))
+        elements.append(details_table)
+        elements.append(Spacer(1, 0.2 * inch))
+        
+        # Table of Details
+        grid_data = [['Description', f'Amount ({rupee_symbol})']]
+        # For a receipt, we usually show the credit entries (what was paid for)
+        for entry in voucher_data.get('entries', []):
+            if entry.get('credit', 0) > 0:
+                grid_data.append([
+                    entry.get('account_name', ''),
+                    f"{float(entry.get('credit', 0)):,.2f}"
+                ])
+
+        # Total row
+        grid_data.append(['Total Received', f"{rupee_symbol} {amount:,.2f}"])
+        
+        grid_table = Table(grid_data, colWidths=[4*inch, 1.5*inch])
+        grid_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f8e9')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2e7d32')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('GRID', (0, 0), (-1, -2), 0.5, colors.grey),
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(grid_table)
+        elements.append(Spacer(1, 0.4 * inch))
+        
+        # Footer: Bank Details & Signature
+        bank_info = [
+            [Paragraph("<b>Payment Ref:</b>", label_style), Paragraph(voucher_data.get('reference', 'N/A'), val_style)],
+        ]
+        if society_info.get('bank_name'):
+             bank_info.append([Paragraph("<b>Bank:</b>", label_style), Paragraph(f"{society_info['bank_name']} - {society_info['bank_account_number']}", val_style)])
+             bank_info.append([Paragraph("<b>IFSC:</b>", label_style), Paragraph(society_info['bank_ifsc_code'], val_style)])
+
+        bank_table = Table(bank_info, colWidths=[1.5*inch, 3*inch])
+        bank_table.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ]))
+        
+        footer_data = [
+            [bank_table, Paragraph("<b>Authorised Signatory</b><br/><br/><br/>_________________", ParagraphStyle('Sign', alignment=TA_RIGHT))]
+        ]
+        footer_table = Table(footer_data, colWidths=[4*inch, 2*inch])
+        footer_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+        ]))
+        elements.append(footer_table)
+        
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def create_voucher_pdf(
+        voucher_data: Dict[str, Any],
+        society_info: Dict[str, Any]
+    ) -> BytesIO:
+        """
+        Create a professional accounting voucher PDF
+        Works for Receipt, Payment, and Journal vouchers
+        """
+        v_type = voucher_data.get('voucher_type', 'VOUCHER').upper()
+        if v_type == 'RECEIPT':
+            return PDFExporter.create_formal_receipt_pdf(voucher_data, society_info)
+            
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=40,
+            leftMargin=40,
+            topMargin=40,
+            bottomMargin=40
+        )
+        
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'VoucherTitle',
+            parent=styles['Heading1'],
+            fontSize=22,
+            textColor=colors.HexColor('#1f4788'),
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        
+        info_style = ParagraphStyle(
+            'VoucherInfo',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=TA_CENTER,
+            textColor=colors.grey
+        )
+        
+        v_type = voucher_data.get('voucher_type', 'VOUCHER').upper()
+        
+        # Determine Voucher Color based on type
+        voucher_color = colors.black
+        if v_type == 'RECEIPT':
+            voucher_color = colors.HexColor('#2e7d32') # Green
+        elif v_type == 'PAYMENT':
+            voucher_color = colors.HexColor('#c62828') # Red
+        elif v_type == 'JOURNAL':
+            voucher_color = colors.HexColor('#1565c0') # Blue
+
+        type_style = ParagraphStyle(
+            'VoucherType',
+            parent=styles['Heading2'],
+            fontSize=16,
+            textColor=voucher_color,
+            alignment=TA_CENTER,
+            spaceBefore=20,
+            spaceAfter=20,
+            fontName='Helvetica-Bold'
+        )
+
+        # Header with Logo
+        logo_url = society_info.get('logo_url')
+        if logo_url:
+            try:
+                # Add logo if possible (simplified for now, usually requires Image flowable)
+                elements.append(Paragraph(f"<img src='{logo_url}' width='60' height='60' />", title_style))
+                elements.append(Spacer(1, 0.2 * inch))
+            except:
+                pass
+
+        elements.append(Paragraph(society_info.get('name', 'Society Name'), title_style))
+        if society_info.get('address'):
+            elements.append(Paragraph(society_info['address'], info_style))
+        elements.append(Spacer(1, 0.1 * inch))
+        
+        elements.append(Paragraph(f"{v_type} VOUCHER", type_style))
+        
+        # Main Info Table
+        main_info = [
+            [f"Voucher No: {voucher_data.get('voucher_number', 'N/A')}", f"Date: {voucher_data.get('date', 'N/A')}"],
+            ["Reference:", voucher_data.get('reference', 'N/A')],
+        ]
+        
+        info_table = Table(main_info, colWidths=[3*inch, 3*inch])
+        info_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ]))
+        elements.append(info_table)
+        elements.append(Spacer(1, 0.3 * inch))
+        
+        # Description/Narration - aligned to left properly
+        narration_style = ParagraphStyle(
+            'NarrationStyle',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=TA_LEFT,
+            leftIndent=0,
+            spaceBefore=0,
+            spaceAfter=0
+        )
+        desc_para = Paragraph(f"<b>Narration:</b> {voucher_data.get('description', 'N/A')}", narration_style)
+        elements.append(desc_para)
+        elements.append(Spacer(1, 0.2 * inch))
+        
+        # Grid Table
+        rupee_symbol = "Rs."
+        grid_data = [['Account Code', 'Account Name', f'Debit ({rupee_symbol})', f'Credit ({rupee_symbol})']]
+        for entry in voucher_data.get('entries', []):
+            grid_data.append([
+                entry.get('account_code', ''),
+                entry.get('account_name', ''),
+                f"{float(entry.get('debit', 0)):,.2f}" if entry.get('debit', 0) > 0 else '',
+                f"{float(entry.get('credit', 0)):,.2f}" if entry.get('credit', 0) > 0 else ''
+            ])
+            
+        # Total row
+        grid_data.append([
+            '', 'TOTAL',
+            f"{float(voucher_data.get('total_debit', 0)):,.2f}",
+            f"{float(voucher_data.get('total_credit', 0)):,.2f}"
+        ])
+        
+        grid_table = Table(grid_data, colWidths=[1*inch, 2.5*inch, 1.25*inch, 1.25*inch])
+        grid_style = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ALIGN', (2, 0), (3, -1), 'RIGHT'),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ])
+        grid_table.setStyle(grid_style)
+        elements.append(grid_table)
+        elements.append(Spacer(1, 0.5 * inch))
+        
+        # Signatures
+        sig_data = [['Prepared By', 'Checked By', 'Approved By']]
+        sig_table = Table(sig_data, colWidths=[2*inch, 2*inch, 2*inch])
+        sig_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica', 10),
+            ('LINEABOVE', (0, 0), (-1, 0), 1, colors.grey),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(sig_table)
+        
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer

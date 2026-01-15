@@ -9,6 +9,7 @@ import accountingService from '../services/accountingService';
 import journalService from '../services/journalService';
 import transactionsService from '../services/transactionsService';
 import flatsService from '../services/flatsService';
+import attachmentService from '../services/attachmentService';
 
 // Helper function to safely extract error message from API errors
 const getErrorMessage = (error) => {
@@ -35,6 +36,104 @@ const getErrorMessage = (error) => {
 };
 
 // Helper function to format current month/year as "January, 2026"
+const EDIT_WARNING_MSG = "This voucher is already posted. It cannot be edited.\n\nDo you want to create a reversal and a new corrected voucher?";
+
+// --- REUSABLE COMPONENTS FOR ATTACHMENTS ---
+
+const VoucherAttachmentsModal = ({ isOpen, onClose, journalEntryId, onDeleted }) => {
+  const [attachments, setAttachments] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && journalEntryId) {
+      loadAttachments();
+    }
+  }, [isOpen, journalEntryId]);
+
+  const loadAttachments = async () => {
+    setLoading(true);
+    try {
+      const data = await attachmentService.listAttachments(journalEntryId);
+      setAttachments(data);
+    } catch (e) {
+      console.error('Error loading attachments:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this attachment?')) return;
+    try {
+      await attachmentService.deleteAttachment(id);
+      setAttachments(attachments.filter(a => a.id !== id));
+      if (onDeleted) onDeleted();
+    } catch (e) {
+      alert('Failed to delete attachment');
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+      <div className="modal-content" style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', width: '500px', maxWidth: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h3>📎 Voucher Attachments</h3>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: '24px', cursor: 'pointer' }}>×</button>
+        </div>
+
+        {loading ? <p>Loading...</p> : attachments.length === 0 ? <p>No attachments found.</p> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {attachments.map(att => (
+              <div key={att.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+                <div style={{ flex: 1, overflow: 'hidden' }}>
+                  <div style={{ fontWeight: 'bold', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{att.file_name}</div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>{(att.file_size / 1024).toFixed(1)} KB | {new Date(att.created_at).toLocaleDateString()}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => attachmentService.downloadAttachment(att.id, att.file_name)}
+                    className="settings-action-btn"
+                    style={{ padding: '4px 8px', fontSize: '12px' }}
+                  >
+                    View
+                  </button>
+                  <button
+                    onClick={() => handleDelete(att.id)}
+                    className="settings-action-btn"
+                    style={{ padding: '4px 8px', fontSize: '12px', color: '#C62828', borderColor: '#FFEBEE' }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+          <button className="settings-cancel-btn" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const FileList = ({ files, onRemove }) => {
+  if (!files || files.length === 0) return null;
+  return (
+    <div style={{ marginTop: '8px', border: '1px solid #eee', borderRadius: '8px', padding: '8px' }}>
+      {files.map((file, idx) => (
+        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 0', borderBottom: idx < files.length - 1 ? '1px solid #eee' : 'none' }}>
+          <span>{file.name} ({(file.size / 1024).toFixed(1)} KB)</span>
+          <button type="button" onClick={() => onRemove(idx)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer', padding: '0 4px' }}>×</button>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const getCurrentMonthYear = () => {
   const now = new Date();
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -49,19 +148,25 @@ const AccountingScreen = () => {
 
   const accountingTabs = [
     { id: 'chart-of-accounts', label: '📊 Chart of Accounts', icon: '📊' },
-    { id: 'quick-entry', label: '⚡ Quick Entry', icon: '⚡' },
+    { id: 'receipt-voucher', label: '📥 Receipt Voucher', icon: '📥' },
+    { id: 'payment-voucher', label: '📤 Payment Voucher', icon: '📤' },
     { id: 'journal-voucher', label: '📝 Journal Voucher', icon: '📝' },
-    { id: 'reports', label: '📈 Reports', icon: '📈' },
+    { id: 'transfer-voucher', label: '🔄 Transfer Voucher', icon: '🔄' },
+    { id: 'reports', label: '📋 Accounting Reports', icon: '📋' },
   ];
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'chart-of-accounts':
         return <ChartOfAccountsTab />;
-      case 'quick-entry':
-        return <QuickEntryTab />;
+      case 'receipt-voucher':
+        return <ReceiptVoucherTab />;
+      case 'payment-voucher':
+        return <PaymentVoucherTab />;
       case 'journal-voucher':
         return <JournalVoucherTab />;
+      case 'transfer-voucher':
+        return <TransferVoucherTab />;
       case 'reports':
         return <ReportsTab />;
       default:
@@ -171,7 +276,7 @@ const ChartOfAccountsTab = () => {
   };
 
   const handleInitialize = async () => {
-    if (!window.confirm('This will initialize the chart of accounts with predefined accounts. Continue?')) {
+    if (!window.confirm('This will initialize the chart of accounts with predefined accounts from the master list. Continue?')) {
       return;
     }
 
@@ -185,6 +290,27 @@ const ChartOfAccountsTab = () => {
     } catch (error) {
       console.error('Error initializing accounts:', error);
       const errorMsg = getErrorMessage(error) || 'Failed to initialize chart of accounts.';
+      setMessage({ type: 'error', text: errorMsg });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetAccounts = async () => {
+    if (!window.confirm('WARNING: This will DELETE ALL account codes! This can only be done if there are no transactions. Are you sure you want to proceed?')) {
+      return;
+    }
+
+    setSaving(true);
+    setMessage({ type: '', text: '' });
+    try {
+      await accountingService.deleteAccounts();
+      setMessage({ type: 'success', text: 'All account codes deleted successfully. You can now re-initialize with the full chart.' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+      await loadAccounts();
+    } catch (error) {
+      console.error('Error resetting accounts:', error);
+      const errorMsg = getErrorMessage(error) || 'Failed to reset accounts. Please ensure there are no transactions using these accounts.';
       setMessage({ type: 'error', text: errorMsg });
     } finally {
       setSaving(false);
@@ -347,7 +473,7 @@ const ChartOfAccountsTab = () => {
           >
             {showAddForm ? '✕ Cancel' : '+ Add Account'}
           </button>
-          {accounts.length === 0 && (
+          {accounts.length === 0 ? (
             <button
               className="settings-add-btn"
               onClick={handleInitialize}
@@ -355,6 +481,15 @@ const ChartOfAccountsTab = () => {
               style={{ backgroundColor: '#4CAF50' }}
             >
               {saving ? 'Initializing...' : '📥 Initialize Chart of Accounts'}
+            </button>
+          ) : (
+            <button
+              className="settings-add-btn"
+              onClick={handleResetAccounts}
+              disabled={saving}
+              style={{ backgroundColor: '#f44336', borderColor: '#d32f2f' }}
+            >
+              {saving ? 'Processing...' : '🗑️ Reset Chart of Accounts'}
             </button>
           )}
         </div>
@@ -604,641 +739,1414 @@ const ChartOfAccountsTab = () => {
   );
 };
 
-// Quick Entry Tab
-const QuickEntryTab = () => {
-  const [entryType, setEntryType] = useState('income');
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    expense_for_month: getCurrentMonthYear(),
-    account: '',
-    amount: '',
-    description: '',
-    payment_mode: 'cash',
-    reference: '',
-  });
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [transactions, setTransactions] = useState([]);
-  const [message, setMessage] = useState({ type: '', text: '' });
-  const [editingTransaction, setEditingTransaction] = useState(null);
-  const [editFormData, setEditFormData] = useState({
-    date: '',
-    expense_for_month: '',
-    account: '',
-    amount: '',
-    description: '',
-    payment_mode: 'cash',
-    reference: '',
-  });
+// Voucher Print Handler (Reusable)
+const handlePrintVoucher = async (journalEntryId) => {
+  if (!journalEntryId) return;
+  try {
+    const blob = await transactionsService.downloadVoucherPdf(journalEntryId);
+    if (!blob) throw new Error("No data received");
+    const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Voucher_${journalEntryId}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Error printing voucher:', error);
+    alert('Failed to generate voucher PDF. Please try again.');
+  }
+};
 
-  useEffect(() => {
-    loadAccounts();
-    loadRecentTransactions();
-  }, [entryType]);
+// Robust Searchable Select Component for Accounting
+const SearchableSelect = ({ label, options, value, onChange, placeholder, required = false, displayKey = 'name', valueKey = 'id', minCharsForSearch = 3 }) => {
+  const [search, setSearch] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const wrapperRef = React.useRef(null);
+  const inputRef = React.useRef(null);
 
-  const loadRecentTransactions = async () => {
-    try {
-      const data = await transactionsService.getTransactions({ limit: 10 });
-      setTransactions(data || []);
-    } catch (error) {
-      console.error('Error loading transactions:', error);
+  // Find current selected option
+  const selectedOption = React.useMemo(() => {
+    if (!value && value !== 0) return null;
+    if (!options || !Array.isArray(options)) return null;
+    return options.find(opt => String(opt[valueKey]) === String(value));
+  }, [options, value, valueKey]);
+
+  const displayValue = selectedOption
+    ? `${selectedOption.code ? selectedOption.code + ' - ' : ''}${selectedOption[displayKey]}`
+    : '';
+
+  const filteredOptions = React.useMemo(() => {
+    if (!options || !Array.isArray(options)) {
+      console.log('SearchableSelect - No options:', label);
+      return [];
     }
-  };
 
-  const loadAccounts = async () => {
-    try {
-      const typeMap = {
-        'income': 'income',
-        'expense': 'expense',
-        'transfer': null
-      };
-      const accountsList = await accountingService.getAccounts(typeMap[entryType]);
-      setAccounts(accountsList || []);
-    } catch (error) {
-      console.error('Error loading accounts:', error);
+    // If search is empty and minCharsForSearch is 0, show all options (up to 100)
+    const searchLower = search.toLowerCase().trim();
+    if (!searchLower && minCharsForSearch === 0) {
+      return options.slice(0, 100);
     }
-  };
 
-  const handleEditTxn = async (txn) => {
-    try {
-      // Load full transaction details
-      const fullTxn = await transactionsService.getTransaction(txn.id);
-      
-      // Set entry type based on transaction type
-      const txnType = fullTxn.type || 'expense';
-      setEntryType(txnType);
-      
-      // Load accounts for this transaction type
-      const typeMap = {
-        'income': 'income',
-        'expense': 'expense',
-        'transfer': null
-      };
-      const accountsList = await accountingService.getAccounts(typeMap[txnType]);
-      setAccounts(accountsList || []);
-      
-      setEditingTransaction(txn.id);
-      setEditFormData({
-        date: fullTxn.date,
-        expense_for_month: fullTxn.expense_month || getCurrentMonthYear(),
-        account: fullTxn.account_code || '',
-        amount: fullTxn.amount?.toString() || '',
-        description: fullTxn.description || '',
-        payment_mode: fullTxn.payment_method === 'bank' ? 'bank' : 'cash',
-        reference: fullTxn.document_number || '',
-      });
-      setMessage({ type: '', text: '' });
-    } catch (error) {
-      console.error('Error loading transaction for edit:', error);
-      const errorMsg = getErrorMessage(error) || 'Failed to load transaction details for editing.';
-      setMessage({ type: 'error', text: errorMsg });
+    // If search is empty but minCharsForSearch > 0, only show if focused/open
+    if (!searchLower) {
+      return (isOpen || isFocused) ? options.slice(0, 100) : [];
     }
-  };
 
-  const handleCancelEdit = (clearMessage = true) => {
-    setEditingTransaction(null);
-    setEditFormData({
-      date: '',
-      expense_for_month: '',
-      account: '',
-      amount: '',
-      description: '',
-      payment_mode: 'cash',
-      reference: '',
+    // Filter options based on search
+    const filtered = options.filter(opt => {
+      const name = String(opt[displayKey] || '').toLowerCase();
+      const code = String(opt.code || '').toLowerCase();
+      const cat = String(opt.category || opt.type || '').toLowerCase();
+      return name.includes(searchLower) || code.includes(searchLower) || cat.includes(searchLower);
     });
-    if (clearMessage) {
-      setMessage({ type: '', text: '' });
-    }
+
+    console.log(`SearchableSelect "${label}" - Search: "${search}", Found: ${filtered.length}/${options.length}`);
+    return filtered;
+  }, [options, search, displayKey, isOpen, isFocused, label, minCharsForSearch]);
+
+  // Handle click outside to close
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setIsFocused(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Reset highlight when list changes
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [filteredOptions]);
+
+  const handleSelect = (option) => {
+    onChange(option[valueKey]);
+    setIsOpen(false);
+    setIsFocused(false);
+    setSearch('');
   };
 
-  const handleUpdateTxn = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage({ type: '', text: '' });
-
-    try {
-      const payload = {};
-      
-      // Only include fields that have actual values (not empty strings)
-      if (editFormData.date && editFormData.date.trim()) {
-        payload.date = editFormData.date;
+  const handleKeyDown = (e) => {
+    if (!isOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
+        setIsOpen(true);
       }
-      if (editFormData.account && editFormData.account.trim()) {
-        payload.account_code = editFormData.account;
-      }
-      if (editFormData.amount && !isNaN(parseFloat(editFormData.amount))) {
-        payload.amount = parseFloat(editFormData.amount);
-      }
-      if (editFormData.description && editFormData.description.trim()) {
-        payload.description = editFormData.description;
-      }
-      if (editFormData.account.startsWith('5') && editFormData.expense_for_month && editFormData.expense_for_month.trim()) {
-        payload.expense_month = editFormData.expense_for_month;
-      }
-      if (editFormData.payment_mode) {
-        payload.payment_method = editFormData.payment_mode === 'cash' ? 'cash' : 'bank';
-      }
-      if (editFormData.reference && editFormData.reference.trim()) {
-        payload.document_number = editFormData.reference;
-      }
-
-      await transactionsService.updateTransaction(editingTransaction, payload);
-      loadRecentTransactions();
-      
-      // Show success message and close edit form after a short delay
-      setMessage({ type: 'success', text: 'Transaction updated successfully!' });
-      
-      // Delay canceling edit to show success message (don't clear message)
-      setTimeout(() => {
-        handleCancelEdit(false); // Don't clear message when canceling after success
-      }, 2000);
-    } catch (error) {
-      console.error('Error updating transaction:', error);
-      const errorMsg = getErrorMessage(error) || 'Failed to update transaction. Please try again.';
-      setMessage({ type: 'error', text: errorMsg });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleReverseTxn = async (txn) => {
-    if (!window.confirm(`Are you sure you want to REVERSE this transaction (${txn.document_number})?`)) {
       return;
     }
-    setLoading(true);
-    try {
-      await transactionsService.reverseTransaction(txn.id);
-      setMessage({ type: 'success', text: `Transaction reversed successfully!` });
-      loadRecentTransactions();
-    } catch (error) {
-      console.error('Error reversing transaction:', error);
-      const errorMsg = getErrorMessage(error) || 'Failed to reverse transaction.';
-      setMessage({ type: 'error', text: errorMsg });
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const entryTypes = [
-    { id: 'income', label: '💰 Income', icon: '💰' },
-    { id: 'expense', label: '💸 Expense', icon: '💸' },
-    { id: 'transfer', label: '🔄 Transfer', icon: '🔄' },
-  ];
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Validate flat_id if account 1100 is selected
-    if (formData.account === '1100' && !formData.flat_id) {
-      setMessage({ type: 'error', text: 'Flat selection is required when account 1100 (Maintenance Dues Receivable) is selected.' });
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      const selectedFlat = flats.find(f => f.id === parseInt(formData.flat_id));
-      let description = formData.description;
-      
-      // Add flat info to description if 1100 is selected
-      if (formData.account === '1100' && selectedFlat) {
-        description = `${formData.description} - Flat: ${selectedFlat.flat_number}`;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev < filteredOptions.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filteredOptions[highlightedIndex]) {
+        handleSelect(filteredOptions[highlightedIndex]);
       }
-      
-      const payload = {
-        type: entryType,
-        category: accounts.find(a => a.code === formData.account)?.name || 'General',
-        account_code: formData.account,
-        amount: parseFloat(formData.amount),
-        description: description,
-        date: formData.date,
-        expense_month: formData.account.startsWith('5') ? formData.expense_for_month : null,
-        payment_method: formData.payment_mode === 'cash' ? 'cash' : 'bank',
-        bank_account_code: formData.payment_mode === 'bank' ? null : null,
-        document_number: formData.reference || null
-      };
-
-      await transactionsService.createTransaction(payload);
-      setMessage({ type: 'success', text: 'Entry created successfully!' });
-      loadRecentTransactions();
-      setFormData({
-        date: new Date().toISOString().split('T')[0],
-        expense_for_month: getCurrentMonthYear(),
-        account: '',
-        amount: '',
-        description: '',
-        payment_mode: 'cash',
-        reference: '',
-        flat_id: '',
-      });
-      setAccountSearch('');
-    } catch (error) {
-      console.error('Error creating entry:', error);
-      const errorMsg = getErrorMessage(error) || 'Error creating entry. Please try again.';
-      setMessage({ type: 'error', text: errorMsg });
-    } finally {
-      setLoading(false);
+    } else if (e.key === 'Tab') {
+      // Auto-select highlighted if tabbing away while open
+      if (filteredOptions[highlightedIndex]) {
+        handleSelect(filteredOptions[highlightedIndex]);
+      } else {
+        setIsOpen(false);
+      }
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+      setSearch('');
+      setIsFocused(false);
     }
   };
 
   return (
-    <div className="settings-tab-content">
-      <h2 className="settings-tab-title">⚡ Quick Entry</h2>
-      <p className="settings-tab-description">Quickly record income, expenses, or transfers</p>
-
-      {/* Success/Error Message */}
-      {message.text && (
+    <div className="settings-form-group" style={{ position: 'relative', width: '100%' }} ref={wrapperRef}>
+      {label && <label>{label} {required && <span style={{ color: 'red' }}>*</span>}</label>}
+      <div style={{ position: 'relative' }}>
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder={placeholder || (minCharsForSearch === 0 ? 'Click to select or type to search...' : `Type ${minCharsForSearch}+ characters to search...`)}
+          value={isFocused ? search : displayValue}
+          onChange={(e) => {
+            const newValue = e.target.value;
+            setSearch(newValue);
+            setIsFocused(true);
+            // Only open dropdown if user has typed minimum characters (or if minCharsForSearch is 0)
+            if (minCharsForSearch === 0 || newValue.length >= minCharsForSearch) {
+              setIsOpen(true);
+            } else {
+              setIsOpen(false);
+            }
+          }}
+          onFocus={() => {
+            setIsFocused(true);
+            setSearch('');
+            setIsOpen(true);
+          }}
+          onBlur={() => {
+            // Don't immediately unfocus - wait a bit for potential selection
+            setTimeout(() => {
+              if (!wrapperRef.current?.contains(document.activeElement)) {
+                setIsFocused(false);
+                setIsOpen(false);
+              }
+            }, 150);
+          }}
+          onKeyDown={handleKeyDown}
+          style={{
+            width: '100%',
+            padding: '10px',
+            borderRadius: '8px',
+            border: `2px solid ${isOpen ? '#E8842A' : '#e0e0e0'}`,
+            backgroundColor: '#fff',
+            outline: 'none',
+            fontSize: '14px',
+            transition: 'all 0.2s',
+            cursor: 'text'
+          }}
+          autoComplete="off"
+        />
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            const nextOpenState = !isOpen;
+            setIsOpen(nextOpenState);
+            if (nextOpenState) {
+              setSearch('');
+              inputRef.current?.focus();
+            }
+          }}
+          style={{
+            position: 'absolute',
+            right: '10px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            cursor: 'pointer',
+            color: '#666',
+            padding: '5px'
+          }}
+        >
+          {isOpen ? '❌' : '▼'}
+        </div>
+      </div>
+      {isOpen && (minCharsForSearch === 0 || search.length >= minCharsForSearch) && (
         <div style={{
-          padding: '12px 16px',
+          position: 'absolute',
+          zIndex: 1000,
+          width: 'max-content',
+          minWidth: '100%',
+          maxWidth: '500px',
+          background: 'white',
+          border: '1px solid #ddd',
           borderRadius: '8px',
-          marginBottom: '20px',
-          backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FFEBEE',
-          color: message.type === 'success' ? '#2E7D32' : '#C62828',
-          border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#EF5350'}`,
+          maxHeight: '300px',
+          overflowY: 'auto',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          marginTop: '5px',
+          left: 0
         }}>
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((opt, idx) => (
+              <div
+                key={String(opt[valueKey])}
+                style={{
+                  padding: '12px 15px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #f5f5f5',
+                  backgroundColor: idx === highlightedIndex ? '#FFF3E0' : '#fff',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  transition: 'background-color 0.1s'
+                }}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => handleSelect(opt)}
+                onMouseEnter={() => setHighlightedIndex(idx)}
+              >
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {opt.code ? <strong style={{ color: '#E8842A', minWidth: '60px', flexShrink: 0 }}>{opt.code}</strong> : ''}
+                  <span style={{ color: '#333', fontWeight: idx === highlightedIndex ? '600' : '400', flex: 1 }}>{String(opt[displayKey])}</span>
+                </div>
+                {(opt.category || opt.type) && (
+                  <span style={{
+                    fontSize: '10px',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    backgroundColor: '#F5F5F5',
+                    color: '#888',
+                    textTransform: 'uppercase',
+                    fontWeight: 'bold',
+                    marginLeft: '8px'
+                  }}>
+                    {opt.category || opt.type}
+                  </span>
+                )}
+              </div>
+            ))
+          ) : (
+            <div style={{ padding: '20px', color: '#999', textAlign: 'center', fontSize: '14px' }}>
+              No matches found {options && options.length > 0 ? `(${options.length} total options available)` : '(no options loaded)'}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+// --- Receipt Voucher Tab ---
+const ReceiptVoucherTab = () => {
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [allAccounts, setAllAccounts] = useState([]);
+  const [flats, setFlats] = useState([]);
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    account_code: '1100', // Maintenance Dues (Default)
+    amount: '',
+    qty: '',
+    unit_price: '',
+    payment_method: 'bank',
+    description: '',
+    flat_id: '',
+    received_from: '',
+    reference: '',
+    bank_account_code: ''
+  });
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [receiptsPerPage] = useState(20);
+  const [totalReceipts, setTotalReceipts] = useState(0);
+
+  useEffect(() => { loadInitialData(); }, [currentPage]);
+
+  const loadInitialData = async () => {
+    try {
+      const offset = (currentPage - 1) * receiptsPerPage;
+      const [accts, flts, txns] = await Promise.all([
+        accountingService.getAccounts(), // Get ALL accounts for flexibility
+        flatsService.getFlats(),
+        transactionsService.getTransactions({ type: 'income', limit: 100 }) // Fetch more to handle grouping
+      ]);
+
+      setAllAccounts(accts || []);
+      setFlats(flts || []);
+
+      // Group transactions by journal_entry_id to show only one line per receipt
+      const grouped = {};
+      (txns || []).forEach(txn => {
+        if (txn.journal_entry_id && !grouped[txn.journal_entry_id]) {
+          grouped[txn.journal_entry_id] = txn;
+        }
+      });
+
+      // Convert back to array and paginate
+      const uniqueTransactions = Object.values(grouped);
+      const paginatedTxns = uniqueTransactions.slice(offset, offset + receiptsPerPage);
+      setTransactions(paginatedTxns);
+      setTotalReceipts(uniqueTransactions.length)
+
+      // Filter Bank/Cash accounts (Assets in 1000-1099 range usually)
+      const banks = (accts || []).filter(a => {
+        const type = String(a.type || '').toLowerCase();
+        const name = String(a.name || '').toLowerCase();
+        return (type === 'asset' && a.code >= '1000' && a.code <= '1099') ||
+          name.includes('bank') ||
+          name.includes('cash');
+      });
+      setBankAccounts(banks);
+
+      // Auto-select first bank if none selected
+      if (banks.length > 0 && !formData.bank_account_code) {
+        setFormData(prev => ({ ...prev, bank_account_code: banks[0].code }));
+      }
+    } catch (error) { console.error('Error loading receipt data:', error); }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (formData.payment_method === 'bank' && !formData.bank_account_code) {
+      setMessage({ type: 'error', text: 'Please select a Bank Account' });
+      return;
+    }
+
+    let reversalReason = null;
+    if (editingId) {
+      // Prompt for reason instead of just confirm
+      reversalReason = window.prompt("This voucher is already posted. It cannot be edited.\n\nDo you want to create a reversal and a new corrected voucher?\n\nIf YES, please enter a reason for this correction:", "Correction");
+      if (reversalReason === null) {
+        return; // User cancelled
+      }
+    }
+
+    setLoading(true);
+    try {
+      // If editing, reverse the old one first with reason
+      if (editingId) {
+        await transactionsService.reverseTransaction(editingId, `Update: ${reversalReason}`);
+      }
+
+      // If narration is empty, provide a fallback but don't hardcode it in the input
+      const finalDescription = formData.description || 'Receipt';
+      const resp = await transactionsService.createReceipt({
+        ...formData,
+        amount: parseFloat(formData.amount),
+        quantity: formData.qty ? parseFloat(formData.qty) : undefined,
+        unit_price: formData.unit_price ? parseFloat(formData.unit_price) : undefined,
+        account_code: String(formData.account_code),
+        bank_account_code: formData.bank_account_code ? String(formData.bank_account_code) : undefined,
+        flat_id: formData.flat_id || undefined,
+        description: finalDescription
+      });
+
+      // Handle Multiple Attachment Uploads
+      if (selectedFiles.length > 0 && resp.journal_entry_id) {
+        const uploadPromises = selectedFiles.map(file =>
+          attachmentService.uploadAttachment(resp.journal_entry_id, file)
+        );
+        try {
+          await Promise.all(uploadPromises);
+        } catch (attachError) {
+          console.error('Some attachments failed to upload:', attachError);
+          setMessage({ type: 'success', text: editingId ? 'Receipt updated successfully!' : `Receipt created! (Note: Some attachments failed to upload)` });
+          return;
+        }
+      }
+
+      setMessage({ type: 'success', text: editingId ? 'Receipt updated successfully!' : `Receipt created! Voucher: ${resp.voucher_number}. Auto-allocated: ${resp.allocated_amount || 0}` });
+      setFormData({ ...formData, amount: '', qty: '', unit_price: '', description: '', flat_id: '', reference: '', received_from: '' });
+      setSelectedFiles([]); // Reset files
+      setEditingId(null);
+      loadInitialData();
+    } catch (error) { setMessage({ type: 'error', text: getErrorMessage(error) }); }
+    finally { setLoading(false); }
+  };
+
+  const handleEditReceipt = async (txn) => {
+    // 1. Confirm with user before starting edit
+    if (!window.confirm(EDIT_WARNING_MSG)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // 1. Fetch full JV details to find Bank Account (for Receipt: Debit side is Bank)
+      let bankCode = txn.bank_account_code || '';
+      if (!bankCode && txn.journal_entry_id) {
+        try {
+          const jv = await journalService.getJournalEntry(txn.journal_entry_id);
+          if (jv && jv.entries) {
+            // Receipt: Dr Asset (Bank), Cr Income (Account Code)
+            // Typically finding entry with debit > 0
+            const bankEntry = jv.entries.find(e =>
+              parseFloat(e.debit_amount) > 0 &&
+              e.account_code !== txn.account_code
+            );
+            if (bankEntry) bankCode = bankEntry.account_code;
+          }
+        } catch (e) { console.error("JV fetch error", e); }
+      }
+
+      // Populate form with transaction data for editing
+      setFormData({
+        date: txn.date,
+        account_code: txn.account_code || '',
+        amount: txn.amount || '',
+        qty: txn.quantity || '',
+        unit_price: txn.unit_price || '',
+        payment_method: 'bank', // Default, should ideally come from txn
+        description: txn.description || '',
+        expense_month: txn.expense_month ? convertMonthYearToInput(txn.expense_month) : '',
+        flat_id: txn.flat_id || '',
+        reference: txn.reference || '',
+        received_from: txn.received_from || '',
+        bank_account_code: bankCode
+      });
+      setEditingId(txn.id);
+      setMessage({ type: 'info', text: `Editing ${txn.voucher_number}. Modify the form and submit to update.` });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      console.error(e);
+      setMessage({ type: 'error', text: 'Error loading for edit' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReverseReceipt = async (txn) => {
+    const reason = window.prompt(`Are you sure you want to reverse ${txn.voucher_number}?\n\nThis will create reversing entries.\n\nPlease enter a reason for reversal:`, "Incorrect Info");
+    if (reason === null) {
+      return;
+    }
+    try {
+      setLoading(true);
+      await transactionsService.reverseTransaction(txn.id, reason);
+      setMessage({ type: 'success', text: `Receipt ${txn.voucher_number} reversed successfully!` });
+      loadInitialData();
+    } catch (error) {
+      setMessage({ type: 'error', text: `Failed to reverse receipt: ${getErrorMessage(error)}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter accounts for primary selection (Income, Asset, Liability, Capital)
+  const primaryAccounts = allAccounts.filter(a => {
+    const type = String(a.type || '').toLowerCase();
+    return ['income', 'asset', 'liability', 'capital'].includes(type);
+  });
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">📥 Receipt Voucher <span style={{ fontSize: '12px', fontWeight: 'normal', color: '#888' }}>(Loaded: {primaryAccounts.length} Accounts, {flats.length} Flats)</span></h2>
+      <p className="settings-tab-description">Record maintenance collections, corpus funds, or other income</p>
+
+      {message.text && (
+        <div style={{ padding: '12px', borderRadius: '8px', marginBottom: '20px', backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FFEBEE', color: message.type === 'success' ? '#2E7D32' : '#C62828' }}>
           {message.text}
         </div>
       )}
 
       <div className="settings-section">
-        <h3>Entry Type</h3>
-        <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
-          {entryTypes.map((type) => (
-            <button
-              key={type.id}
-              onClick={() => setEntryType(type.id)}
-              style={{
-                flex: 1,
-                padding: '15px',
-                border: `3px solid ${entryType === type.id ? 'var(--gm-orange)' : '#e0e0e0'}`,
-                borderRadius: '12px',
-                background: entryType === type.id ? 'var(--gm-bg-light)' : 'white',
-                cursor: 'pointer',
-                fontSize: '16px',
-                fontWeight: entryType === type.id ? '600' : '400',
-                transition: 'all 0.2s'
-              }}
-            >
-              <span style={{ fontSize: '24px', display: 'block', marginBottom: '5px' }}>{type.icon}</span>
-              {type.label}
-            </button>
-          ))}
-        </div>
-
         <form className="settings-form" onSubmit={handleSubmit}>
           <div className="settings-form-row">
-            <div className="settings-form-group">
-              <label>Date *</label>
-              <input
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                required
-              />
-            </div>
-            {formData.account.startsWith('5') && (
-              <div className="settings-form-group">
-                <label>Expense For Month *</label>
-                <input
-                  type="text"
-                  value={formData.expense_for_month}
-                  onChange={(e) => setFormData({ ...formData, expense_for_month: e.target.value })}
-                  placeholder="January, 2026"
-                  required
-                />
-              </div>
-            )}
+            <div className="settings-form-group"><label>Date *</label><input type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} required /></div>
+            <div className="settings-form-group"><label>Quantity</label><input type="number" step="any" placeholder="e.g. 1" value={formData.qty} onChange={(e) => {
+              const qty = e.target.value;
+              const total = (qty && formData.unit_price) ? (parseFloat(qty) * parseFloat(formData.unit_price)).toFixed(2) : formData.amount;
+              setFormData(prev => ({ ...prev, qty, amount: total }));
+            }} /></div>
+            <div className="settings-form-group"><label>Unit Price (₹)</label><input type="number" step="any" placeholder="e.g. 100" value={formData.unit_price} onChange={(e) => {
+              const unit_price = e.target.value;
+              const total = (formData.qty && unit_price) ? (parseFloat(formData.qty) * parseFloat(unit_price)).toFixed(2) : formData.amount;
+              setFormData(prev => ({ ...prev, unit_price, amount: total }));
+            }} /></div>
+            <div className="settings-form-group"><label>Total Amount (₹) *</label><input type="number" step="0.01" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} required /></div>
           </div>
 
           <div className="settings-form-row">
-            <div className="settings-form-group" style={{ position: 'relative' }}>
-              <label>Account *</label>
+            <SearchableSelect
+              label="Account (Credit)"
+              options={primaryAccounts}
+              value={formData.account_code}
+              onChange={(val) => setFormData(prev => ({ ...prev, account_code: val }))}
+              placeholder="Search account code or name..."
+              required={true}
+              valueKey="code"
+              displayKey="name"
+              minCharsForSearch={0}
+            />
+
+            <SearchableSelect
+              label="Flat (For Auto-Allocation)"
+              options={flats.map(f => ({ ...f, displayName: `${f.flat_number} - ${f.owner_name || 'No Owner'}` }))}
+              value={formData.flat_id}
+              onChange={(val) => {
+                console.log('Selected Flat:', val);
+                const flat = flats.find(f => f.id === val);
+                setFormData(prev => ({
+                  ...prev,
+                  flat_id: val,
+                  received_from: flat ? (flat.owner_name || '') : prev.received_from
+                }));
+              }}
+              placeholder="Search flat number or owner..."
+              valueKey="id"
+              displayKey="displayName"
+              minCharsForSearch={0}
+            />
+          </div>
+
+          <div className="settings-form-row">
+            <div className="settings-form-group">
+              <label>Received From</label>
               <input
                 type="text"
-                value={accountSearch || (formData.account ? `${formData.account} - ${accounts.find(a => a.code === formData.account)?.name || ''}` : '')}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setAccountSearch(value);
-                  setShowAccountDropdown(true);
-                  // If user types account code directly, try to match
-                  const match = accounts.find(acc => acc.code === value || `${acc.code} - ${acc.name}` === value);
-                  if (match) {
-                    setFormData({ ...formData, account: match.code });
-                    setAccountSearch('');
-                    setShowAccountDropdown(false);
-                  }
-                }}
-                onFocus={() => setShowAccountDropdown(true)}
-                onBlur={() => setTimeout(() => setShowAccountDropdown(false), 200)}
-                placeholder="Type account code or name to search..."
-                required
-                style={{ width: '100%' }}
+                placeholder="Name to print on receipt"
+                value={formData.received_from}
+                onChange={(e) => setFormData(prev => ({ ...prev, received_from: e.target.value }))}
               />
-              {showAccountDropdown && filteredAccounts.length > 0 && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  backgroundColor: 'white',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  maxHeight: '200px',
-                  overflowY: 'auto',
-                  zIndex: 1000,
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                }}>
-                  {filteredAccounts.map(acc => (
-                    <div
-                      key={acc.code}
-                      onClick={() => {
-                        setFormData({ ...formData, account: acc.code });
-                        setAccountSearch('');
-                        setShowAccountDropdown(false);
-                      }}
-                      style={{
-                        padding: '10px',
-                        cursor: 'pointer',
-                        borderBottom: '1px solid #eee'
-                      }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = '#f5f5f5'}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
-                    >
-                      <strong>{acc.code}</strong> - {acc.name}
-                    </div>
-                  ))}
-                </div>
-              )}
+            </div>
+
+            <div className="settings-form-group">
+              <label>Payment Method</label>
+              <select value={formData.payment_method} onChange={(e) => setFormData(prev => ({ ...prev, payment_method: e.target.value }))}>
+                <option value="bank">Bank</option>
+                <option value="cash">Cash</option>
+              </select>
+            </div>
+
+            <div className="settings-form-group">
+              <label>Reference # (Cheque/UTR/Trans ID)</label>
+              <input type="text" placeholder="e.g. CHQ 123456" value={formData.reference} onChange={(e) => setFormData(prev => ({ ...prev, reference: e.target.value }))} />
             </div>
           </div>
 
-          {formData.account === '1100' && (
-            <div className="settings-form-row">
-              <div className="settings-form-group">
-                <label>Flat * (Required for 1100 - Maintenance Dues Receivable)</label>
-                <select
-                  value={formData.flat_id}
-                  onChange={(e) => setFormData({ ...formData, flat_id: e.target.value })}
-                  required
-                >
-                  <option value="">Select Flat</option>
-                  {flats.map(flat => (
-                    <option key={flat.id} value={flat.id}>
-                      {flat.flat_number} - {flat.owner_name || 'N/A'}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="settings-form-row">
+            <SearchableSelect
+              label="Received In (Bank/Cash Account)"
+              options={bankAccounts}
+              value={formData.bank_account_code}
+              onChange={(val) => setFormData(prev => ({ ...prev, bank_account_code: val }))}
+              placeholder="Select bank/cash account..."
+              required={true}
+              valueKey="code"
+              displayKey="name"
+              minCharsForSearch={0}
+            />
+          </div>
+
+          <div className="settings-form-group">
+            <label>Narration/Description</label>
+            <textarea
+              placeholder="Enter receipt details..."
+              value={formData.description}
+              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              rows="2"
+            />
+          </div>
+
+          <div className="settings-form-group" style={{ marginBottom: '20px' }}>
+            <label>Voucher Attachments (Bills/Receipts - Max 5MB each)</label>
+            <input
+              type="file"
+              onChange={(e) => setSelectedFiles([...selectedFiles, ...Array.from(e.target.files)])}
+              accept=".pdf,.jpg,.jpeg,.png,.docx"
+              multiple
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '2px solid #e0e0e0', backgroundColor: '#fff' }}
+            />
+            <FileList files={selectedFiles} onRemove={(idx) => {
+              const newFiles = [...selectedFiles];
+              newFiles.splice(idx, 1);
+              setSelectedFiles(newFiles);
+            }} />
+          </div>
+
+          <div className="settings-form-actions" style={{ display: 'flex', gap: '10px' }}>
+            <button type="submit" className="settings-save-btn" disabled={loading}>
+              {loading ? 'Processing...' : (editingId ? 'Update Receipt' : '📥 Post Receipt')}
+            </button>
+            {editingId && (
+              <button
+                type="button"
+                className="settings-action-btn"
+                onClick={() => {
+                  setEditingId(null);
+                  setFormData({ ...formData, amount: '', qty: '', unit_price: '', description: '', flat_id: '', reference: '', received_from: '' });
+                  setMessage({ type: '', text: '' });
+                }}
+                style={{ backgroundColor: '#666' }}
+              >
+                Cancel Edit
+              </button>
+            )}
+          </div>
+        </form>
+      </div >
+
+      <div className="settings-section" style={{ marginTop: '30px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0 }}>Recent Receipts (Page {currentPage})</h3>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', backgroundColor: currentPage === 1 ? '#f5f5f5' : '#fff', cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
+            >
+              ← Previous
+            </button>
+            <span style={{ color: '#666', fontSize: '14px' }}>
+              Showing {transactions.length} receipts
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => p + 1)}
+              disabled={transactions.length < receiptsPerPage}
+              style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', backgroundColor: transactions.length < receiptsPerPage ? '#f5f5f5' : '#fff', cursor: transactions.length < receiptsPerPage ? 'not-allowed' : 'pointer' }}
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+        <div className="settings-table-container">
+          <table className="settings-table">
+            <thead>
+              <tr><th>Date</th><th>Voucher #</th><th>Description</th><th style={{ textAlign: 'right' }}>Amount</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {transactions.length > 0 ? transactions.map(txn => (
+                <tr key={txn.id}>
+                  <td>{txn.date}</td>
+                  <td><strong>{txn.voucher_number}</strong></td>
+                  <td>{txn.description}</td>
+                  <td style={{ textAlign: 'right' }}>₹{txn.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
+                      <button className="settings-action-btn" onClick={() => handlePrintVoucher(txn.journal_entry_id)} style={{ padding: '6px 10px', fontSize: '12px' }}>Print</button>
+                      <button className="settings-action-btn" onClick={() => handleEditReceipt(txn)} style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: '#2196F3' }}>Edit</button>
+                      <button className="settings-action-btn" onClick={() => handleReverseReceipt(txn)} style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: '#f44336' }}>Reversal</button>
+                    </div>
+                  </td>
+                </tr>
+              )) : (
+                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No recent receipts found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div >
+  );
+};
+
+// Helper functions for Month formating
+const formatMonthYear = (val) => {
+  if (!val) return undefined;
+  // val is "YYYY-MM" from input type="month"
+  const [y, m] = val.split('-');
+  const date = new Date(parseInt(y), parseInt(m) - 1, 1);
+  return date.toLocaleString('default', { month: 'long', year: 'numeric' }); // Returns "December, 2025"
+};
+
+const convertMonthYearToInput = (val) => {
+  if (!val) return '';
+  // val is "December, 2025" from backend
+  try {
+    const parts = val.split(', ');
+    if (parts.length !== 2) return '';
+    const date = new Date(`${parts[0]} 1, ${parts[1]}`);
+    const y = date.getFullYear();
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    return `${y}-${m}`;
+  } catch (e) { return ''; }
+};
+
+// --- Payment Voucher Tab ---
+const PaymentVoucherTab = () => {
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [allAccounts, setAllAccounts] = useState([]);
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [flats, setFlats] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    account_code: '',
+    amount: '',
+    qty: '',
+    unit_price: '',
+    payment_method: 'bank',
+    description: '',
+    expense_month: '',
+    flat_id: '',
+    reference: '',
+    bank_account_code: '',
+    paid_to: ''
+  });
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+
+  useEffect(() => { loadInitialData(); }, []);
+
+  const loadInitialData = async () => {
+    try {
+      const [accts, flts, txns] = await Promise.all([
+        accountingService.getAccounts(),
+        flatsService.getFlats(),
+        transactionsService.getTransactions({ type: 'expense', limit: 100 })
+      ]);
+      setAllAccounts(accts || []);
+      setFlats(flts || []);
+
+      // Group transactions by journal_entry_id to show only one line per payment
+      const grouped = {};
+      (txns || []).forEach(txn => {
+        if (txn.journal_entry_id && !grouped[txn.journal_entry_id]) {
+          grouped[txn.journal_entry_id] = txn;
+        }
+      });
+
+      // Convert back to array and take first 10
+      const uniqueTransactions = Object.values(grouped).slice(0, 10);
+      setTransactions(uniqueTransactions);
+
+      // Filter Bank/Cash accounts
+      const banks = (accts || []).filter(a =>
+        (a.type === 'asset' && a.code >= '1000' && a.code <= '1099') ||
+        a.name.toLowerCase().includes('bank') ||
+        a.name.toLowerCase().includes('cash')
+      );
+      setBankAccounts(banks);
+
+      if (banks.length > 0 && !formData.bank_account_code) {
+        setFormData(prev => ({ ...prev, bank_account_code: banks[0].code }));
+      }
+    } catch (error) { console.error('Error loading payment data:', error); }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (formData.payment_method === 'bank' && !formData.bank_account_code) {
+      setMessage({ type: 'error', text: 'Please select a Bank Account' });
+      return;
+    }
+
+    let reversalReason = null;
+    if (editingId) {
+      // Prompt for reason instead of just confirm
+      reversalReason = window.prompt("This voucher is already posted. It cannot be edited.\n\nDo you want to create a reversal and a new corrected voucher?\n\nIf YES, please enter a reason for this correction:", "Correction");
+      if (reversalReason === null) {
+        return; // User cancelled
+      }
+    }
+
+    setLoading(true);
+    try {
+      // If editing, reverse the old one first with reason
+      if (editingId) {
+        await transactionsService.reverseTransaction(editingId, `Update: ${reversalReason}`);
+      }
+
+      const finalDescription = formData.description || 'Payment';
+      const resp = await transactionsService.createPayment({
+        ...formData,
+        amount: parseFloat(formData.amount),
+        quantity: formData.qty ? parseFloat(formData.qty) : undefined,
+        unit_price: formData.unit_price ? parseFloat(formData.unit_price) : undefined,
+        expense_month: formData.expense_month ? formatMonthYear(formData.expense_month) : undefined,
+        description: finalDescription
+      });
+
+      // Handle Multiple Attachment Uploads
+      if (selectedFiles.length > 0 && resp.journal_entry_id) {
+        const uploadPromises = selectedFiles.map(file =>
+          attachmentService.uploadAttachment(resp.journal_entry_id, file)
+        );
+        try {
+          await Promise.all(uploadPromises);
+        } catch (attachError) {
+          console.error('Some attachments failed to upload:', attachError);
+          setMessage({ type: 'success', text: editingId ? 'Payment updated successfully!' : `Payment created! (Note: Some attachments failed to upload)` });
+          return;
+        }
+      }
+
+      setMessage({ type: 'success', text: editingId ? 'Payment updated successfully!' : `Payment created! Voucher: ${resp.voucher_number}` });
+      setFormData({ ...formData, amount: '', qty: '', unit_price: '', description: '', reference: '' });
+      setSelectedFiles([]); // Reset files
+      setEditingId(null);
+      loadInitialData();
+    } catch (error) { setMessage({ type: 'error', text: getErrorMessage(error) }); }
+    finally { setLoading(false); }
+  };
+
+  const handleEditPayment = async (txn) => {
+    // 1. Confirm with user before starting edit
+    if (!window.confirm(EDIT_WARNING_MSG)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Fetch full JV details to find the Bank Account
+      let bankCode = txn.bank_account_code || '';
+
+      if (!bankCode && txn.journal_entry_id) {
+        try {
+          const jv = await journalService.getJournalEntry(txn.journal_entry_id);
+          if (jv && jv.entries) {
+            // For Payment: Credit side is usually Bank
+            // Exclude the account that matches txn.account_code (Expense side)
+            const bankEntry = jv.entries.find(e =>
+              parseFloat(e.credit_amount) > 0 &&
+              e.account_code !== txn.account_code
+            );
+            if (bankEntry) {
+              bankCode = bankEntry.account_code;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch JV details for edit:", e);
+        }
+      }
+
+      // Populate form with transaction data for editing
+      setFormData({
+        date: txn.date,
+        account_code: txn.account_code || '',
+        amount: txn.amount || '',
+        qty: txn.quantity || '',
+        unit_price: txn.unit_price || '',
+        payment_method: 'bank',
+        description: txn.description || '',
+        expense_month: txn.expense_month ? convertMonthYearToInput(txn.expense_month) : '',
+        flat_id: txn.flat_id || '',
+        reference: txn.reference || '',
+        bank_account_code: bankCode,
+        paid_to: txn.paid_to || ''
+      });
+      setEditingId(txn.id);
+      setMessage({ type: 'info', text: `Editing ${txn.voucher_number}. Modify the form and submit to update.` });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      console.error("Edit error:", e);
+      setMessage({ type: 'error', text: "Failed to load voucher for editing" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReversePayment = async (txn) => {
+    const reason = window.prompt(`Are you sure you want to reverse ${txn.voucher_number}?\n\nThis will create reversing entries.\n\nPlease enter a reason for reversal:`, "Incorrect Info");
+    if (reason === null) {
+      return;
+    }
+    try {
+      setLoading(true);
+      await transactionsService.reverseTransaction(txn.id, reason);
+      setMessage({ type: 'success', text: `Payment ${txn.voucher_number} reversed successfully!` });
+      loadInitialData();
+    } catch (error) {
+      setMessage({ type: 'error', text: `Failed to reverse payment: ${getErrorMessage(error)}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter accounts for primary selection (Expense, Asset, Liability, Capital)
+  const primaryAccounts = allAccounts.filter(a => ['expense', 'asset', 'liability', 'capital'].includes(a.type));
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">📤 Payment Voucher</h2>
+      <p className="settings-tab-description">Record society expenses, utility payments, or vendor settled</p>
+
+      {message.text && (
+        <div style={{ padding: '12px', borderRadius: '8px', marginBottom: '20px', backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FFEBEE', color: message.type === 'success' ? '#2E7D32' : '#C62828' }}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="settings-section">
+        <form className="settings-form" onSubmit={handleSubmit}>
+          <div className="settings-form-row">
+            <div className="settings-form-group"><label>Date *</label><input type="date" value={formData.date} onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))} required /></div>
+            <div className="settings-form-group"><label>Quantity</label><input type="number" step="any" placeholder="e.g. 75" value={formData.qty} onChange={(e) => {
+              const qty = e.target.value;
+              const total = (qty && formData.unit_price) ? (parseFloat(qty) * parseFloat(formData.unit_price)).toFixed(2) : formData.amount;
+              setFormData(prev => ({ ...prev, qty, amount: total }));
+            }} /></div>
+            <div className="settings-form-group"><label>Unit Price (₹)</label><input type="number" step="any" placeholder="e.g. 450" value={formData.unit_price} onChange={(e) => {
+              const unit_price = e.target.value;
+              const total = (formData.qty && unit_price) ? (parseFloat(formData.qty) * parseFloat(unit_price)).toFixed(2) : formData.amount;
+              setFormData(prev => ({ ...prev, unit_price, amount: total }));
+            }} /></div>
+            <div className="settings-form-group"><label>Total Amount (₹) *</label><input type="number" step="0.01" value={formData.amount} onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))} required /></div>
+            <div className="settings-form-group">
+              <label>For Month</label>
+              <input
+                type="month"
+                value={formData.expense_month}
+                onChange={(e) => setFormData(prev => ({ ...prev, expense_month: e.target.value }))}
+                title="Select the month this expense belongs to (optional). Defaults to voucher date month if empty."
+              />
             </div>
-          )}
+          </div>
+
+          <div className="settings-form-row">
+            <SearchableSelect
+              label="Account (Debit)"
+              options={primaryAccounts}
+              value={formData.account_code}
+              onChange={(val) => setFormData(prev => ({ ...prev, account_code: val }))}
+              placeholder="Search account code or name..."
+              required={true}
+              valueKey="code"
+              displayKey="name"
+              minCharsForSearch={0}
+            />
+            <SearchableSelect
+              label="Flat (Optional tracking)"
+              options={flats.map(f => ({ ...f, displayName: `${f.flat_number} - ${f.owner_name || 'No Owner'}` }))}
+              value={formData.flat_id}
+              onChange={(val) => setFormData(prev => ({ ...prev, flat_id: val }))}
+              placeholder="Search flat number or owner..."
+              valueKey="id"
+              displayKey="displayName"
+              minCharsForSearch={0}
+            />
+          </div>
 
           <div className="settings-form-row">
             <div className="settings-form-group">
-              <label>Amount (₹) *</label>
+              <label>Paid To</label>
               <input
-                type="number"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                step="0.01"
-                placeholder="0.00"
-                required
+                type="text"
+                placeholder="Name to print on payment voucher"
+                value={formData.paid_to}
+                onChange={(e) => setFormData(prev => ({ ...prev, paid_to: e.target.value }))}
               />
             </div>
             <div className="settings-form-group">
-              <label>Payment Mode *</label>
-              <select
-                value={formData.payment_mode}
-                onChange={(e) => setFormData({ ...formData, payment_mode: e.target.value })}
-                required
-              >
+              <label>Payment Method</label>
+              <select value={formData.payment_method} onChange={(e) => setFormData(prev => ({ ...prev, payment_method: e.target.value }))}>
+                <option value="bank">Bank</option>
                 <option value="cash">Cash</option>
-                <option value="bank">Bank Transfer</option>
-                <option value="cheque">Cheque</option>
-                <option value="online">Online Payment</option>
               </select>
             </div>
           </div>
 
-          {entryType === 'transfer' && (
+          <div className="settings-form-row">
             <div className="settings-form-group">
-              <label>To Account *</label>
-              <select required>
-                <option value="">Select Account</option>
-                <option value="1001">1001 - Cash</option>
-                <option value="1002">1002 - Bank - HDFC</option>
-              </select>
+              <label>Reference # (Cheque/UTR/Trans ID)</label>
+              <input type="text" placeholder="e.g. UTR12345" value={formData.reference} onChange={(e) => setFormData(prev => ({ ...prev, reference: e.target.value }))} />
             </div>
-          )}
+          </div>
+
+          <div className="settings-form-row">
+            <SearchableSelect
+              label="Paid From (Bank/Cash Account)"
+              options={bankAccounts}
+              value={formData.bank_account_code}
+              onChange={(val) => setFormData(prev => ({ ...prev, bank_account_code: val }))}
+              placeholder="Select bank/cash account..."
+              required={true}
+              valueKey="code"
+              displayKey="name"
+              minCharsForSearch={0}
+            />
+          </div>
 
           <div className="settings-form-group">
-            <label>Description *</label>
+            <label>Narration/Description</label>
             <textarea
-              rows="3"
+              placeholder="Enter payment details..."
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Enter description..."
-              required
+              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              rows="2"
             />
           </div>
 
-          <div className="settings-form-group">
-            <label>Reference Number (Optional)</label>
+          <div className="settings-form-group" style={{ marginBottom: '20px' }}>
+            <label>Voucher Attachments (Bills/Receipts - Max 5MB each)</label>
             <input
-              type="text"
-              value={formData.reference}
-              onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
-              placeholder="Cheque number, transaction ID, etc"
+              type="file"
+              onChange={(e) => setSelectedFiles([...selectedFiles, ...Array.from(e.target.files)])}
+              accept=".pdf,.jpg,.jpeg,.png,.docx"
+              multiple
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '2px solid #e0e0e0', backgroundColor: '#fff' }}
             />
+            <FileList files={selectedFiles} onRemove={(idx) => {
+              const newFiles = [...selectedFiles];
+              newFiles.splice(idx, 1);
+              setSelectedFiles(newFiles);
+            }} />
           </div>
 
-          <div className="settings-form-actions">
+          <div className="settings-form-actions" style={{ display: 'flex', gap: '10px' }}>
             <button type="submit" className="settings-save-btn" disabled={loading}>
-              {loading ? 'Saving...' : 'Save Entry'}
+              {loading ? 'Processing...' : (editingId ? 'Update Payment' : '📤 Post Payment')}
             </button>
-            <button type="button" className="settings-cancel-btn" onClick={() => setFormData({
-              date: new Date().toISOString().split('T')[0],
-              expense_for_month: getCurrentMonthYear(),
-              account: '',
-              amount: '',
-              description: '',
-              payment_mode: 'cash',
-              reference: '',
-            })} disabled={loading}>
-              Clear
-            </button>
+            {editingId && (
+              <button
+                type="button"
+                className="settings-action-btn"
+                onClick={() => {
+                  setEditingId(null);
+                  setFormData({ ...formData, amount: '', qty: '', unit_price: '', description: '', reference: '' });
+                  setMessage({ type: '', text: '' });
+                }}
+                style={{ backgroundColor: '#666' }}
+              >
+                Cancel Edit
+              </button>
+            )}
           </div>
         </form>
       </div>
 
-      {/* Edit Transaction Modal/Form */}
-      {editingTransaction && (
-        <div className="settings-section" style={{ marginTop: '30px', marginBottom: '30px', backgroundColor: '#f9f9f9', padding: '20px', borderRadius: '8px', border: '2px solid var(--gm-orange)' }}>
-          <h3 style={{ marginTop: 0 }}>Edit Transaction</h3>
-          <form className="settings-form" onSubmit={handleUpdateTxn}>
+      <div className="settings-section" style={{ marginTop: '30px' }}>
+        <h3>Recent Payments</h3>
+        <div className="settings-table-container">
+          <table className="settings-table">
+            <thead>
+              <tr><th>Date</th><th>Voucher #</th><th>Description</th><th style={{ textAlign: 'right' }}>Amount</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {transactions.length > 0 ? transactions.map(txn => (
+                <tr key={txn.id}>
+                  <td>{txn.date}</td>
+                  <td><strong>{txn.voucher_number}</strong></td>
+                  <td>{txn.description}</td>
+                  <td style={{ textAlign: 'right' }}>₹{txn.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
+                      <button className="settings-action-btn" onClick={() => handlePrintVoucher(txn.journal_entry_id)} style={{ padding: '6px 10px', fontSize: '12px' }}>Print</button>
+                      <button className="settings-action-btn" onClick={() => handleEditPayment(txn)} style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: '#2196F3' }}>Edit</button>
+                      <button className="settings-action-btn" onClick={() => handleReversePayment(txn)} style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: '#f44336' }}>Reversal</button>
+                    </div>
+                  </td>
+                </tr>
+              )) : (
+                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No recent payments found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div >
+  );
+};
+
+// --- Journal Voucher Tab ---
+const JournalVoucherTab = () => {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [vouchers, setVouchers] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [flats, setFlats] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingVoucher, setEditingVoucher] = useState(null);
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    expense_for_month: getCurrentMonthYear(),
+    description: '',
+    entries: [{ account_code: '', debit_amount: '', credit_amount: '', description: '', flat_id: '' }, { account_code: '', debit_amount: '', credit_amount: '', description: '', flat_id: '' }]
+  });
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [existingAttachments, setExistingAttachments] = useState([]);
+
+  useEffect(() => { loadInitialData(); }, []);
+
+  const loadInitialData = async () => {
+    setLoading(true);
+    try {
+      const [accts, flts, vchs] = await Promise.all([
+        accountingService.getAccounts(),
+        flatsService.getFlats(),
+        journalService.getJournalEntries()
+      ]);
+      console.log('Journal Voucher - Loaded accounts:', accts?.length || 0);
+      console.log('Journal Voucher - Loaded flats:', flts?.length || 0);
+      console.log('Journal Voucher - Loaded vouchers:', vchs?.length || 0);
+      setAccounts(accts || []);
+      setFlats(flts || []);
+      setVouchers(vchs || []);
+      if (!accts || accts.length === 0) {
+        setMessage({ type: 'error', text: 'No accounts found. Please initialize Chart of Accounts first from the Chart of Accounts tab.' });
+      }
+    } catch (e) {
+      console.error('Error loading journal data:', e);
+      console.error('Error response:', e.response?.data);
+      const errorDetail = e.response?.data?.detail || e.message;
+      setMessage({ type: 'error', text: `Failed to load data: ${JSON.stringify(errorDetail)}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEdit = async (voucher) => {
+    // 1. Confirm with user before starting edit
+    if (!window.confirm(EDIT_WARNING_MSG)) {
+      return;
+    }
+
+    try {
+      const full = await journalService.getJournalEntry(voucher.id);
+      setEditingVoucher(voucher.id);
+      setFormData({
+        date: full.date,
+        expense_for_month: full.expense_month || getCurrentMonthYear(),
+        description: full.description,
+        entries: full.entries.map(e => ({
+          account_code: e.account_code,
+          debit_amount: e.debit_amount.toString(),
+          credit_amount: e.credit_amount.toString(),
+          description: e.description || '',
+          flat_id: e.flat_id || ''
+        }))
+      });
+      setShowForm(true);
+      setMessage({ type: 'info', text: `Editing ${voucher.entry_number}. Modify the form and submit to update.` });
+
+      // Fetch existing attachments
+      try {
+        const attachments = await attachmentService.listAttachments(voucher.id);
+        setExistingAttachments(attachments);
+      } catch (attError) {
+        console.error('Error fetching attachments in edit mode:', attError);
+      }
+    } catch (e) { console.error('Error fetching journal:', e); }
+  };
+
+  const handleCancel = () => {
+    setShowForm(false);
+    setEditingVoucher(null);
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      expense_for_month: getCurrentMonthYear(),
+      description: '',
+      entries: [{ account_code: '', debit_amount: '', credit_amount: '', description: '', flat_id: '' }, { account_code: '', debit_amount: '', credit_amount: '', description: '', flat_id: '' }]
+    });
+    setSelectedFiles([]);
+    setMessage({ type: '', text: '' });
+    setExistingAttachments([]);
+  };
+
+  const handleReverseJournal = async (voucher) => {
+    if (!window.confirm(`Are you sure you want to reverse ${voucher.entry_number}?\n\nThis will create reversing entries and cannot be undone.`)) {
+      return;
+    }
+    try {
+      setLoading(true);
+      await journalService.reverseJournalEntry(voucher.id);
+      setMessage({ type: 'success', text: `Journal entry ${voucher.entry_number} reversed successfully!` });
+      loadInitialData();
+    } catch (error) {
+      setMessage({ type: 'error', text: `Failed to reverse journal entry: ${getErrorMessage(error)}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateTotal = () => {
+    const td = formData.entries.reduce((s, e) => s + (parseFloat(e.debit_amount) || 0), 0);
+    const tc = formData.entries.reduce((s, e) => s + (parseFloat(e.credit_amount) || 0), 0);
+    return { td, tc, balanced: Math.abs(td - tc) < 0.01 && td > 0 };
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const { balanced } = calculateTotal();
+    if (!balanced) { setMessage({ type: 'error', text: 'Voucher is not balanced!' }); return; }
+
+    setSaving(true);
+    try {
+      const data = {
+        date: formData.date,
+        expense_month: formData.entries.some(e => e.account_code?.startsWith('5')) ? formData.expense_for_month : null,
+        description: formData.description,
+        entries: formData.entries.map(e => ({
+          account_code: e.account_code,
+          debit_amount: parseFloat(e.debit_amount) || 0,
+          credit_amount: parseFloat(e.credit_amount) || 0,
+          description: e.description,
+          flat_id: e.flat_id || null
+        }))
+      };
+
+      let resp;
+      if (editingVoucher) resp = await journalService.updateJournalEntry(editingVoucher, data);
+      else resp = await journalService.createJournalEntry(data);
+
+      // Handle Multiple Attachment Uploads
+      if (selectedFiles.length > 0 && resp.id) {
+        const uploadPromises = selectedFiles.map(file =>
+          attachmentService.uploadAttachment(resp.id, file)
+        );
+        try {
+          await Promise.all(uploadPromises);
+        } catch (attachError) {
+          console.error('Some attachments failed to upload:', attachError);
+          setMessage({ type: 'success', text: 'Journal Voucher saved! (Note: Some attachments failed to upload)' });
+          return;
+        }
+      }
+
+      setMessage({ type: 'success', text: 'Journal Voucher saved successfully!' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      handleCancel();
+      loadInitialData();
+    } catch (err) {
+      setMessage({ type: 'error', text: getErrorMessage(err) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addEntry = () => {
+    setFormData({ ...formData, entries: [...formData.entries, { account_code: '', debit_amount: '', credit_amount: '', description: '', flat_id: '' }] });
+  };
+
+  const removeEntry = (index) => {
+    if (formData.entries.length <= 2) return;
+    const newEntries = [...formData.entries];
+    newEntries.splice(index, 1);
+    setFormData({ ...formData, entries: newEntries });
+  };
+
+  const handleEntryChange = (index, field, value) => {
+    const newEntries = [...formData.entries];
+    newEntries[index][field] = value;
+    setFormData({ ...formData, entries: newEntries });
+  };
+
+  const { td, tc, balanced } = calculateTotal();
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <div className="settings-tab-content">
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+        <h2 className="settings-tab-title">📝 Journal Voucher</h2>
+        <button className="settings-add-btn" onClick={() => { if (showForm) handleCancel(); else setShowForm(true); }}>
+          {showForm ? 'Cancel' : '+ New Journal Entry'}
+        </button>
+      </div>
+
+      {message.text && (
+        <div style={{ padding: '12px', borderRadius: '8px', marginBottom: '20px', backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FFEBEE', color: message.type === 'success' ? '#2E7D32' : '#C62828' }}>
+          {message.text}
+        </div>
+      )}
+
+      {showForm && (
+        <div className="settings-section">
+          <form className="settings-form" onSubmit={handleSubmit}>
             <div className="settings-form-row">
-              <div className="settings-form-group">
-                <label>Date *</label>
-                <input
-                  type="date"
-                  value={editFormData.date}
-                  onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
-                  required
-                  disabled={loading}
-                />
-              </div>
-              {editFormData.account.startsWith('5') && (
-                <div className="settings-form-group">
-                  <label>Expense For Month *</label>
-                  <input
-                    type="text"
-                    value={editFormData.expense_for_month}
-                    onChange={(e) => setEditFormData({ ...editFormData, expense_for_month: e.target.value })}
-                    placeholder="December, 2025"
-                    required
-                    disabled={loading}
-                  />
-                  <small style={{ color: '#666', fontSize: '12px' }}>
-                    Format: Month, Year (e.g., December, 2025)
-                  </small>
+              <div className="settings-form-group"><label>Voucher Date *</label><input type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} required /></div>
+              <div className="settings-form-group"><label>Expense For Month</label><input type="text" placeholder="Jan 2026" value={formData.expense_for_month} onChange={(e) => setFormData({ ...formData, expense_for_month: e.target.value })} /></div>
+            </div>
+
+            <div className="settings-form-group"><label>General Narration *</label><textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} required rows="2" /></div>
+
+            <div className="settings-form-group" style={{ marginBottom: '20px' }}>
+              <label>Voucher Attachments (Bills/Receipts - Max 5MB each)</label>
+              {existingAttachments.length > 0 && (
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={{ fontSize: '12px', color: '#666' }}>Existing Attachments:</label>
+                  {existingAttachments.map(att => (
+                    <div key={att.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 8px', backgroundColor: '#f9f9f9', borderRadius: '4px', marginBottom: '4px' }}>
+                      <span>📎 {att.file_name}</span>
+                      <button type="button" onClick={() => {
+                        if (window.confirm('Delete this attachment?')) {
+                          attachmentService.deleteAttachment(att.id).then(() => {
+                            setExistingAttachments(existingAttachments.filter(a => a.id !== att.id));
+                          });
+                        }
+                      }} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>×</button>
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
-
-            <div className="settings-form-row">
-              <div className="settings-form-group">
-                <label>Account *</label>
-                <select
-                  value={editFormData.account}
-                  onChange={(e) => setEditFormData({ ...editFormData, account: e.target.value })}
-                  required
-                  disabled={loading}
-                >
-                  <option value="">Select Account</option>
-                  {accounts.map(acc => (
-                    <option key={acc.code} value={acc.code}>
-                      {acc.code} - {acc.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="settings-form-row">
-              <div className="settings-form-group">
-                <label>Amount (₹) *</label>
-                <input
-                  type="number"
-                  value={editFormData.amount}
-                  onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
-                  step="0.01"
-                  placeholder="0.00"
-                  required
-                  disabled={loading}
-                />
-              </div>
-              <div className="settings-form-group">
-                <label>Payment Mode *</label>
-                <select
-                  value={editFormData.payment_mode}
-                  onChange={(e) => setEditFormData({ ...editFormData, payment_mode: e.target.value })}
-                  required
-                  disabled={loading}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="bank">Bank Transfer</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="online">Online Payment</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="settings-form-group">
-              <label>Description *</label>
-              <textarea
-                rows="3"
-                value={editFormData.description}
-                onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
-                placeholder="Enter description..."
-                required
-                disabled={loading}
-              />
-            </div>
-
-            <div className="settings-form-group">
-              <label>Reference Number (Optional)</label>
               <input
-                type="text"
-                value={editFormData.reference}
-                onChange={(e) => setEditFormData({ ...editFormData, reference: e.target.value })}
-                placeholder="Cheque number, transaction ID, etc"
-                disabled={loading}
+                type="file"
+                onChange={(e) => setSelectedFiles([...selectedFiles, ...Array.from(e.target.files)])}
+                accept=".pdf,.jpg,.jpeg,.png,.docx"
+                multiple
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '2px solid #e0e0e0', backgroundColor: '#fff' }}
               />
+              <FileList files={selectedFiles} onRemove={(idx) => {
+                const newFiles = [...selectedFiles];
+                newFiles.splice(idx, 1);
+                setSelectedFiles(newFiles);
+              }} />
+            </div>
+
+            <div className="settings-table-container">
+              <table className="settings-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '25%' }}>Account *</th>
+                    <th style={{ width: '15%' }}>Debit</th>
+                    <th style={{ width: '15%' }}>Credit</th>
+                    <th>Description</th>
+                    <th style={{ width: '80px' }}>Flat</th>
+                    <th style={{ width: '50px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {formData.entries.map((entry, idx) => (
+                    <tr key={idx}>
+                      <td>
+                        <SearchableSelect
+                          label=""
+                          options={accounts}
+                          value={entry.account_code}
+                          onChange={(val) => handleEntryChange(idx, 'account_code', val)}
+                          placeholder="Acc Code/Name"
+                          required={true}
+                          valueKey="code"
+                          displayKey="name"
+                          minCharsForSearch={0}
+                        />
+                      </td>
+                      <td><input type="number" step="0.01" value={entry.debit_amount} onChange={(e) => handleEntryChange(idx, 'debit_amount', e.target.value)} /></td>
+                      <td><input type="number" step="0.01" value={entry.credit_amount} onChange={(e) => handleEntryChange(idx, 'credit_amount', e.target.value)} /></td>
+                      <td><input type="text" value={entry.description} onChange={(e) => handleEntryChange(idx, 'description', e.target.value)} placeholder="Entry level narration" /></td>
+                      <td>
+                        <SearchableSelect
+                          label=""
+                          options={flats.map(f => ({ ...f, displayName: f.flat_number }))}
+                          value={entry.flat_id}
+                          onChange={(val) => handleEntryChange(idx, 'flat_id', val)}
+                          placeholder="Flat"
+                          valueKey="id"
+                          displayKey="displayName"
+                          minCharsForSearch={0}
+                        />
+                      </td>
+                      <td><button type="button" onClick={() => removeEntry(idx)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>×</button></td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: '#f9f9f9', fontWeight: 'bold' }}>
+                    <td>TOTAL</td>
+                    <td style={{ color: balanced ? 'green' : 'red' }}>₹{td.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td style={{ color: balanced ? 'green' : 'red' }}>₹{tc.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td colSpan="3">{balanced ? '✅ Balanced' : '❌ Unbalanced'}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginTop: '10px' }}>
+              <button type="button" className="settings-action-btn" onClick={addEntry}>+ Add Line</button>
             </div>
 
             <div className="settings-form-actions">
-              <button type="submit" className="settings-save-btn" disabled={loading}>
-                {loading ? 'Updating...' : 'Update Transaction'}
-              </button>
-              <button type="button" className="settings-cancel-btn" onClick={handleCancelEdit} disabled={loading}>
-                Cancel
-              </button>
+              <button type="submit" className="settings-save-btn" disabled={!balanced || saving}>{saving ? 'Saving...' : (editingVoucher ? 'Update Voucher' : 'Post Journal Voucher')}</button>
+              <button type="button" className="settings-cancel-btn" onClick={handleCancel}>Cancel</button>
             </div>
           </form>
         </div>
       )}
 
-      <div className="settings-section" style={{ marginTop: '30px' }}>
-        <h3>Recent Transactions</h3>
+      <div className="settings-section">
+        <h3>Journal Entries</h3>
         <div className="settings-table-container">
           <table className="settings-table">
             <thead>
-              <tr>
-                <th>Date</th>
-                <th>Voucher #</th>
-                <th>Category / Account</th>
-                <th>Description</th>
-                <th style={{ textAlign: 'right' }}>Amount</th>
-                <th>Action</th>
-              </tr>
+              <tr><th>Voucher #</th><th>Date</th><th>Entries</th><th style={{ textAlign: 'right' }}>Total</th><th>Narration</th><th>Actions</th></tr>
             </thead>
             <tbody>
-              {transactions.length === 0 ? (
-                <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No recent transactions found</td>
+              {vouchers.map(v => (
+                <tr key={v.id}>
+                  <td><strong>{v.entry_number}</strong></td>
+                  <td>{v.date}</td>
+                  <td>{v.entries?.length || 0} items</td>
+                  <td style={{ textAlign: 'right' }}>₹{(v.total_debit || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td>{v.description}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
+                      <button className="settings-action-btn" onClick={() => handlePrintVoucher(v.id)} style={{ padding: '6px 10px', fontSize: '12px' }}>Print</button>
+                      <button className="settings-action-btn" onClick={() => handleEdit(v)} style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: '#2196F3' }}>Edit</button>
+                      <button className="settings-action-btn" onClick={() => handleReverseJournal(v)} style={{ padding: '6px 10px', fontSize: '12px', backgroundColor: '#f44336' }}>Reversal</button>
+                    </div>
+                  </td>
                 </tr>
-              ) : (
-                transactions.map((txn) => (
-                  <tr key={txn.id}>
-                    <td>{txn.date}</td>
-                    <td>{txn.document_number}</td>
-                    <td>
-                      <div><strong>{txn.type.toUpperCase()}</strong></div>
-                      <div style={{ fontSize: '11px', color: '#666' }}>{txn.account_code} - {txn.category}</div>
-                    </td>
-                    <td>{txn.description}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                      ₹{txn.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          className="settings-action-btn"
-                          onClick={() => handleEditTxn(txn)}
-                          disabled={loading}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="settings-action-btn danger"
-                          onClick={() => handleReverseTxn(txn)}
-                          disabled={loading}
-                        >
-                          Reverse
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
@@ -1247,574 +2155,127 @@ const QuickEntryTab = () => {
   );
 };
 
-// Journal Voucher Tab
-const JournalVoucherTab = () => {
-  const [vouchers, setVouchers] = useState([]);
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+// --- Transfer Voucher Tab ---
+const TransferVoucherTab = () => {
+  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [showForm, setShowForm] = useState(false);
-  const [editingVoucher, setEditingVoucher] = useState(null);
+  const [allAccounts, setAllAccounts] = useState([]);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    expense_for_month: getCurrentMonthYear(),
+    from_account_code: '',
+    to_account_code: '',
+    amount: '',
     description: '',
-    entries: [
-      { account_code: '', debit_amount: '', credit_amount: '', description: '' },
-      { account_code: '', debit_amount: '', credit_amount: '', description: '' },
-    ],
+    reference: ''
   });
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
-  useEffect(() => {
-    loadAccounts();
-    loadFlats();
-    loadVouchers();
-  }, []);
+  useEffect(() => { loadInitialData(); }, []);
 
-  const loadFlats = async () => {
+  const loadInitialData = async () => {
     try {
-      const flatsList = await flatsService.getFlats();
-      setFlats(flatsList || []);
-    } catch (error) {
-      console.error('Error loading flats:', error);
-    }
+      const resp = await accountingService.getAccounts();
+      setAllAccounts(resp || []);
+    } catch (e) { console.error('Error loading accounts:', e); }
   };
 
-  const loadAccounts = async () => {
-    try {
-      const accountsList = await accountingService.getAccounts();
-      setAccounts(accountsList || []);
-    } catch (error) {
-      console.error('Error loading accounts:', error);
-    }
-  };
-
-  const loadVouchers = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setLoading(true);
     try {
-      const vouchersList = await journalService.getJournalEntries();
-      setVouchers(vouchersList || []);
-    } catch (error) {
-      console.error('Error loading vouchers:', error);
-      setMessage({ type: 'error', text: 'Failed to load journal vouchers. Please try again.' });
+      const data = {
+        date: formData.date,
+        description: formData.description || 'Transfer',
+        entries: [
+          { account_code: formData.from_account_code, credit_amount: parseFloat(formData.amount), debit_amount: 0, description: formData.description },
+          { account_code: formData.to_account_code, debit_amount: parseFloat(formData.amount), credit_amount: 0, description: formData.description }
+        ]
+      };
+
+      const resp = await journalService.createJournalEntry(data);
+
+      if (selectedFiles.length > 0 && resp.id) {
+        await Promise.all(selectedFiles.map(file => attachmentService.uploadAttachment(resp.id, file)));
+      }
+
+      setMessage({ type: 'success', text: 'Transfer Voucher posted successfully!' });
+      setFormData({ ...formData, amount: '', description: '', reference: '' });
+      setSelectedFiles([]);
+    } catch (err) {
+      setMessage({ type: 'error', text: getErrorMessage(err) });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEdit = async (voucher) => {
-    try {
-      // Load full voucher details
-      const fullVoucher = await journalService.getJournalEntry(voucher.id);
-
-      setEditingVoucher(voucher.id);
-      setFormData({
-        date: fullVoucher.date,
-        expense_for_month: fullVoucher.expense_month || getCurrentMonthYear(),
-        description: fullVoucher.description || '',
-        entries: fullVoucher.entries.map(entry => ({
-          account_code: entry.account_code,
-          debit_amount: entry.debit_amount > 0 ? entry.debit_amount.toString() : '',
-          credit_amount: entry.credit_amount > 0 ? entry.credit_amount.toString() : '',
-          description: entry.description || ''
-        }))
-      });
-      setShowForm(true);
-      setMessage({ type: '', text: '' });
-    } catch (error) {
-      console.error('Error loading voucher for edit:', error);
-      setMessage({ type: 'error', text: 'Failed to load voucher details for editing.' });
-    }
-  };
-
-  const handleCancel = () => {
-    setShowForm(false);
-    setEditingVoucher(null);
-      setFormData({
-        date: new Date().toISOString().split('T')[0],
-        expense_for_month: getCurrentMonthYear(),
-        description: '',
-        entries: [
-          { account_code: '', debit_amount: '', credit_amount: '', description: '', flat_id: '' },
-          { account_code: '', debit_amount: '', credit_amount: '', description: '', flat_id: '' },
-        ],
-      });
-      setAccountSearches({});
-    setMessage({ type: '', text: '' });
-  };
-
-  const addEntry = () => {
-    setFormData({
-      ...formData,
-      entries: [...formData.entries, { account_code: '', debit_amount: '', credit_amount: '', description: '', flat_id: '' }],
-    });
-  };
-
-  const removeEntry = (index) => {
-    if (formData.entries.length > 2) {
-      setFormData({
-        ...formData,
-        entries: formData.entries.filter((_, i) => i !== index),
-      });
-    }
-  };
-
-  const calculateTotal = () => {
-    const totalDebit = formData.entries.reduce((sum, entry) => sum + (parseFloat(entry.debit_amount) || 0), 0);
-    const totalCredit = formData.entries.reduce((sum, entry) => sum + (parseFloat(entry.credit_amount) || 0), 0);
-    return { totalDebit, totalCredit, balanced: totalDebit === totalCredit && totalDebit > 0 };
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const { balanced } = calculateTotal();
-    if (!balanced) {
-      setMessage({ type: 'error', text: 'Debit and Credit totals must be equal and greater than zero!' });
-      return;
-    }
-
-    // Validate entries
-    if (formData.entries.length < 2) {
-      setMessage({ type: 'error', text: 'At least 2 entries are required (one debit, one credit).' });
-      return;
-    }
-
-    // Validate each entry has account and either debit or credit
-    for (let i = 0; i < formData.entries.length; i++) {
-      const entry = formData.entries[i];
-      if (!entry.account_code) {
-        setMessage({ type: 'error', text: `Entry ${i + 1}: Account is required.` });
-        return;
-      }
-      // Validate flat_id if account 1100 is selected
-      if (entry.account_code === '1100' && !entry.flat_id) {
-        setMessage({ type: 'error', text: `Entry ${i + 1}: Flat selection is required when account 1100 (Maintenance Dues Receivable) is selected.` });
-        return;
-      }
-      const hasDebit = parseFloat(entry.debit_amount) > 0;
-      const hasCredit = parseFloat(entry.credit_amount) > 0;
-      if (!hasDebit && !hasCredit) {
-        setMessage({ type: 'error', text: `Entry ${i + 1}: Either debit or credit amount is required.` });
-        return;
-      }
-      if (hasDebit && hasCredit) {
-        setMessage({ type: 'error', text: `Entry ${i + 1}: Cannot have both debit and credit.` });
-        return;
-      }
-    }
-
-    setSaving(true);
-    setMessage({ type: '', text: '' });
-
-    try {
-      // Prepare data for API - include flat info in description for 1100 entries
-      const entryData = {
-        date: formData.date,
-        expense_month: formData.entries.some(e => e.account_code && e.account_code.startsWith('5'))
-          ? formData.expense_for_month
-          : null,
-        description: formData.description,
-        entries: formData.entries.map(entry => {
-          let description = entry.description || '';
-          // Add flat info to description if 1100 is selected
-          if (entry.account_code === '1100' && entry.flat_id) {
-            const selectedFlat = flats.find(f => f.id === parseInt(entry.flat_id));
-            if (selectedFlat) {
-              description = description ? `${description} - Flat: ${selectedFlat.flat_number}` : `Flat: ${selectedFlat.flat_number}`;
-            }
-          }
-          return {
-            account_code: entry.account_code,
-            debit_amount: parseFloat(entry.debit_amount) || 0,
-            credit_amount: parseFloat(entry.credit_amount) || 0,
-            description: description
-          };
-        })
-      };
-
-      if (editingVoucher) {
-        // Update existing voucher
-        await journalService.updateJournalEntry(editingVoucher, entryData);
-        setMessage({ type: 'success', text: 'Journal voucher updated successfully!' });
-      } else {
-        // Create new voucher
-        await journalService.createJournalEntry(entryData);
-        setMessage({ type: 'success', text: 'Journal voucher created successfully!' });
-      }
-
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
-      handleCancel();
-      await loadVouchers();
-    } catch (error) {
-      console.error('Error saving voucher:', error);
-      const errorMsg = getErrorMessage(error) || 'Failed to save journal voucher. Please try again.';
-      setMessage({ type: 'error', text: errorMsg });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const { totalDebit, totalCredit, balanced } = calculateTotal();
-
-  if (loading) {
-    return (
-      <div className="settings-tab-content">
-        <h2 className="settings-tab-title">📝 Journal Voucher</h2>
-        <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
-          Loading journal vouchers...
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="settings-tab-content">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <div>
-          <h2 className="settings-tab-title">📝 Journal Voucher</h2>
-          <p className="settings-tab-description">Create double-entry journal vouchers</p>
-        </div>
-        <button className="settings-add-btn" onClick={() => {
-          handleCancel();
-          setShowForm(true);
-        }}>
-          {showForm ? '✕ Cancel' : '+ New Voucher'}
-        </button>
-      </div>
+      <h2 className="settings-tab-title">🔄 Transfer Voucher</h2>
+      <p className="settings-tab-description">Internal transfers between society bank/cash accounts</p>
 
-      {/* Success/Error Message */}
       {message.text && (
-        <div style={{
-          padding: '12px 16px',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FFEBEE',
-          color: message.type === 'success' ? '#2E7D32' : '#C62828',
-          border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#EF5350'}`,
-        }}>
+        <div style={{ padding: '12px', borderRadius: '8px', marginBottom: '20px', backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FFEBEE', color: message.type === 'success' ? '#2E7D32' : '#C62828' }}>
           {message.text}
         </div>
       )}
 
-      {showForm && (
-        <div className="settings-section" style={{ marginBottom: '20px' }}>
-          <h3>{editingVoucher ? 'Edit Journal Voucher' : 'Create Journal Voucher'}</h3>
-          <form className="settings-form" onSubmit={handleSubmit}>
-            <div className="settings-form-row">
-              <div className="settings-form-group">
-                <label>Voucher Date *</label>
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  required
-                  disabled={saving}
-                />
-              </div>
-              {formData.entries.some(e => e.account_code && e.account_code.startsWith('5')) && (
-                <div className="settings-form-group">
-                  <label>Expense For Month *</label>
-                  <input
-                    type="text"
-                    value={formData.expense_for_month}
-                    onChange={(e) => setFormData({ ...formData, expense_for_month: e.target.value })}
-                    placeholder="January, 2026"
-                    required
-                    disabled={saving}
-                    style={{ position: 'relative' }}
-                  />
-                </div>
-              )}
-            </div>
-            <div className="settings-form-row">
-              <div className="settings-form-group" style={{ width: '100%' }}>
-                <label>Description/Narration *</label>
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Enter description/narration..."
-                  required
-                  disabled={saving}
-                />
-              </div>
-            </div>
-
-            <div className="settings-section" style={{ marginTop: '20px', padding: '15px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
-                <h4 style={{ margin: 0 }}>Journal Entries</h4>
-                <button type="button" className="settings-add-btn" onClick={addEntry}>
-                  + Add Entry
-                </button>
-              </div>
-
-              <div className="settings-table-container">
-                <table className="settings-table">
-                  <thead>
-                    <tr>
-                      <th>Account</th>
-                      <th>Debit (₹)</th>
-                      <th>Credit (₹)</th>
-                      <th>Description</th>
-                      {formData.entries.some(e => e.account_code === '1100') && <th>Flat</th>}
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {formData.entries.map((entry, index) => {
-                      const searchKey = `entry_${index}`;
-                      const accountSearch = accountSearches[searchKey] || '';
-                      const filteredAccounts = accountSearch.trim() === '' 
-                        ? accounts 
-                        : accounts.filter(acc =>
-                            acc.code.toLowerCase().includes(accountSearch.toLowerCase()) ||
-                            acc.name.toLowerCase().includes(accountSearch.toLowerCase())
-                          );
-                      const showDropdown = showAccountDropdowns[searchKey] && filteredAccounts.length > 0;
-                      
-                      return (
-                        <tr key={index}>
-                        <td style={{ position: 'relative' }}>
-                          <input
-                            type="text"
-                            value={accountSearch || (entry.account_code ? `${entry.account_code} - ${accounts.find(a => a.code === entry.account_code)?.name || ''}` : '')}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setAccountSearches({ ...accountSearches, [searchKey]: value });
-                              setShowAccountDropdowns({ ...showAccountDropdowns, [searchKey]: true });
-                              // If user types account code directly, try to match
-                              const match = accounts.find(acc => acc.code === value || `${acc.code} - ${acc.name}` === value);
-                              if (match) {
-                                const newEntries = [...formData.entries];
-                                newEntries[index].account_code = match.code;
-                                setFormData({ ...formData, entries: newEntries });
-                                setAccountSearches({ ...accountSearches, [searchKey]: '' });
-                                setShowAccountDropdowns({ ...showAccountDropdowns, [searchKey]: false });
-                              }
-                            }}
-                            onFocus={() => setShowAccountDropdowns({ ...showAccountDropdowns, [searchKey]: true })}
-                            onBlur={() => setTimeout(() => setShowAccountDropdowns({ ...showAccountDropdowns, [searchKey]: false }), 200)}
-                            placeholder="Type account code or name..."
-                            required
-                            disabled={saving}
-                            style={{ width: '100%', padding: '8px' }}
-                          />
-                          {showDropdown && (
-                            <div style={{
-                              position: 'absolute',
-                              top: '100%',
-                              left: 0,
-                              right: 0,
-                              backgroundColor: 'white',
-                              border: '1px solid #ddd',
-                              borderRadius: '4px',
-                              maxHeight: '150px',
-                              overflowY: 'auto',
-                              zIndex: 1000,
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                            }}>
-                              {filteredAccounts.map(acc => (
-                                <div
-                                  key={acc.code}
-                                  onClick={() => {
-                                    const newEntries = [...formData.entries];
-                                    newEntries[index].account_code = acc.code;
-                                    setFormData({ ...formData, entries: newEntries });
-                                    setAccountSearches({ ...accountSearches, [searchKey]: '' });
-                                    setShowAccountDropdowns({ ...showAccountDropdowns, [searchKey]: false });
-                                  }}
-                                  style={{
-                                    padding: '8px',
-                                    cursor: 'pointer',
-                                    borderBottom: '1px solid #eee',
-                                    fontSize: '12px'
-                                  }}
-                                  onMouseEnter={(e) => e.target.style.backgroundColor = '#f5f5f5'}
-                                  onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
-                                >
-                                  <strong>{acc.code}</strong> - {acc.name}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            value={entry.debit_amount}
-                            onChange={(e) => {
-                              const newEntries = [...formData.entries];
-                              newEntries[index].debit_amount = e.target.value;
-                              newEntries[index].credit_amount = '';
-                              setFormData({ ...formData, entries: newEntries });
-                            }}
-                            step="0.01"
-                            placeholder="0.00"
-                            disabled={saving}
-                            style={{ width: '100%', padding: '8px' }}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            value={entry.credit_amount}
-                            onChange={(e) => {
-                              const newEntries = [...formData.entries];
-                              newEntries[index].credit_amount = e.target.value;
-                              newEntries[index].debit_amount = '';
-                              setFormData({ ...formData, entries: newEntries });
-                            }}
-                            step="0.01"
-                            placeholder="0.00"
-                            disabled={saving}
-                            style={{ width: '100%', padding: '8px' }}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="text"
-                            value={entry.description}
-                            onChange={(e) => {
-                              const newEntries = [...formData.entries];
-                              newEntries[index].description = e.target.value;
-                              setFormData({ ...formData, entries: newEntries });
-                            }}
-                            placeholder="Description"
-                            style={{ width: '100%', padding: '8px' }}
-                            disabled={saving}
-                          />
-                        </td>
-                        {formData.entries.some(e => e.account_code === '1100') && (
-                          <td>
-                            {entry.account_code === '1100' ? (
-                              <select
-                                value={entry.flat_id}
-                                onChange={(e) => {
-                                  const newEntries = [...formData.entries];
-                                  newEntries[index].flat_id = e.target.value;
-                                  setFormData({ ...formData, entries: newEntries });
-                                }}
-                                required
-                                disabled={saving}
-                                style={{ width: '100%', padding: '8px' }}
-                              >
-                                <option value="">Select Flat</option>
-                                {flats.map(flat => (
-                                  <option key={flat.id} value={flat.id}>
-                                    {flat.flat_number}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span style={{ color: '#999' }}>-</span>
-                            )}
-                          </td>
-                        )}
-                        <td>
-                          {formData.entries.length > 2 && (
-                            <button
-                              type="button"
-                              className="settings-action-btn danger"
-                              onClick={() => removeEntry(index)}
-                              disabled={saving}
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                      );
-                    })}
-                    <tr style={{ background: '#f5f5f5', fontWeight: 'bold' }}>
-                      <td>Total</td>
-                      <td style={{ color: balanced ? '#2E7D32' : '#C62828' }}>
-                        {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totalDebit)}
-                      </td>
-                      <td style={{ color: balanced ? '#2E7D32' : '#C62828' }}>
-                        {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totalCredit)}
-                      </td>
-                      <td colSpan="2">
-                        {balanced ? (
-                          <span style={{ color: '#2E7D32' }}>✅ Balanced</span>
-                        ) : (
-                          <span style={{ color: '#C62828' }}>❌ Not Balanced</span>
-                        )}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="settings-form-actions">
-              <button type="submit" className="settings-save-btn" disabled={!balanced || saving}>
-                {saving ? 'Saving...' : editingVoucher ? 'Update Voucher' : 'Save Voucher'}
-              </button>
-              <button type="button" className="settings-cancel-btn" onClick={handleCancel} disabled={saving}>
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
       <div className="settings-section">
-        <h3>Journal Vouchers</h3>
-        {vouchers.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#999' }}>
-            No journal vouchers found. Create a new voucher to get started.
+        <form className="settings-form" onSubmit={handleSubmit}>
+          <div className="settings-form-row">
+            <div className="settings-form-group"><label>Date *</label><input type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} required /></div>
+            <div className="settings-form-group"><label>Amount (₹) *</label><input type="number" step="0.01" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} required /></div>
           </div>
-        ) : (
-          <div className="settings-table-container">
-            <table className="settings-table">
-              <thead>
-                <tr>
-                  <th>Voucher #</th>
-                  <th>Date</th>
-                  <th>Entries</th>
-                  <th>Total Amount</th>
-                  <th>Description</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vouchers.map((voucher) => (
-                  <tr key={voucher.id}>
-                    <td><strong>{voucher.entry_number || `JV-${voucher.id}`}</strong></td>
-                    <td>{voucher.date}</td>
-                    <td>
-                      {voucher.entries && voucher.entries.map((e, i) => {
-                        const account = accounts.find(acc => acc.code === e.account_code);
-                        const accountName = account ? `${e.account_code} - ${account.name}` : e.account_code;
-                        return (
-                          <div key={i} style={{ fontSize: '12px', marginBottom: '4px' }}>
-                            {accountName}: {e.debit_amount > 0 ? `Dr ₹${e.debit_amount.toLocaleString('en-IN')}` : `Cr ₹${e.credit_amount.toLocaleString('en-IN')}`}
-                          </div>
-                        );
-                      })}
-                    </td>
-                    <td>
-                      {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(
-                        voucher.total_debit || voucher.total_credit || 0
-                      )}
-                    </td>
-                    <td>{voucher.description || '-'}</td>
-                    <td>
-                      <button
-                        className="settings-action-btn"
-                        onClick={() => handleEdit(voucher)}
-                        disabled={saving}
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+          <div className="settings-form-row">
+            <SearchableSelect
+              label="From Account (Credit) *"
+              options={allAccounts}
+              value={formData.from_account_code}
+              onChange={(val) => setFormData({ ...formData, from_account_code: val })}
+              placeholder="Source account..."
+              required={true}
+              valueKey="code"
+              displayKey="name"
+              minCharsForSearch={0}
+            />
+            <SearchableSelect
+              label="To Account (Debit) *"
+              options={allAccounts}
+              value={formData.to_account_code}
+              onChange={(val) => setFormData({ ...formData, to_account_code: val })}
+              placeholder="Destination account..."
+              required={true}
+              valueKey="code"
+              displayKey="name"
+              minCharsForSearch={0}
+            />
           </div>
-        )}
+
+          <div className="settings-form-group">
+            <label>Narration/Description</label>
+            <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} rows="2" />
+          </div>
+
+          <div className="settings-form-group" style={{ marginBottom: '20px' }}>
+            <label>Voucher Attachments (Max 5MB each)</label>
+            <input
+              type="file"
+              onChange={(e) => setSelectedFiles([...selectedFiles, ...Array.from(e.target.files)])}
+              accept=".pdf,.jpg,.jpeg,.png,.docx"
+              multiple
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '2px solid #e0e0e0', backgroundColor: '#fff' }}
+            />
+            <FileList files={selectedFiles} onRemove={(idx) => {
+              const newFiles = [...selectedFiles];
+              newFiles.splice(idx, 1);
+              setSelectedFiles(newFiles);
+            }} />
+          </div>
+
+          <div className="settings-form-actions">
+            <button type="submit" className="settings-save-btn" disabled={loading || !formData.amount}>{loading ? 'Posting...' : '🔄 Post Transfer'}</button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -1834,17 +2295,61 @@ const ReportsTab = () => {
   const [success, setSuccess] = useState('');
   const [reportData, setReportData] = useState(null);
   const [accounts, setAccounts] = useState([]);
+  const [accountsWithBalance, setAccountsWithBalance] = useState([]);
+
+  const [showAttachments, setShowAttachments] = useState(false);
+  const [activeVoucherId, setActiveVoucherId] = useState(null);
+
+  const handleViewAttachment = (journalEntryId) => {
+    setActiveVoucherId(journalEntryId);
+    setShowAttachments(true);
+  };
+
+  const [recentReports, setRecentReports] = useState([
+    {
+      id: 'recent-1',
+      type: 'trial-balance',
+      label: 'Trial Balance',
+      generatedOn: '2026-01-05 10:30 AM',
+      period: 'Jan 2026',
+      params: { as_on_date: '2026-01-14', from_date: '2026-01-01', to_date: '2026-01-14' }
+    }
+  ]);
 
   useEffect(() => {
-    const loadAccounts = async () => {
+    const loadAccountsAndBalances = async () => {
       try {
+        // Load all accounts
         const data = await accountingService.getAccounts();
         setAccounts(data || []);
+
+        // Load trial balance to get accounts with non-zero balances
+        try {
+          const today = new Date().toISOString().split('T')[0];
+          const trialBalance = await api.get('/reports/trial-balance', {
+            params: { as_on_date: today }
+          });
+
+          // Filter accounts that have non-zero debit or credit balance
+          const accountsWithActivity = trialBalance.data.items
+            .filter(item => item.debit_balance > 0 || item.credit_balance > 0)
+            .map(item => {
+              // Find the full account object from accounts list
+              const fullAccount = data.find(acc => acc.code === item.account_code);
+              return fullAccount || { code: item.account_code, name: item.account_name };
+            });
+
+          setAccountsWithBalance(accountsWithActivity);
+        } catch (tbError) {
+          console.error('Error loading trial balance:', tbError);
+          // If trial balance fails, use all accounts
+          setAccountsWithBalance(data || []);
+        }
       } catch (error) {
         console.error('Error loading accounts for reports:', error);
       }
     };
-    loadAccounts();
+    loadAccountsAndBalances();
   }, []);
 
   const reports = [
@@ -1937,10 +2442,23 @@ const ReportsTab = () => {
         setReportData(response.data);
         setSuccess(`Receipts & Payments report generated successfully`);
       } else {
-        // Other reports - TODO: Implement when backend endpoints are ready
         setError(`${reports.find(r => r.id === selectedReport)?.label} report generation is not yet implemented`);
         setLoading(false);
         return;
+      }
+
+      // Add to recent reports if successful
+      if (response && response.data) {
+        setReportData(response.data);
+        const newReport = {
+          id: Date.now(),
+          type: selectedReport,
+          label: reports.find(r => r.id === selectedReport)?.label || selectedReport,
+          generatedOn: new Date().toLocaleString(),
+          period: reportParams.as_on_date || `${reportParams.from_date} to ${reportParams.to_date}`,
+          params: { ...reportParams }
+        };
+        setRecentReports(prev => [newReport, ...prev.slice(0, 4)]);
       }
 
       setLoading(false);
@@ -1950,6 +2468,160 @@ const ReportsTab = () => {
       setError(errorMessage);
       setReportData(null);
       console.error('Error generating report:', err);
+    }
+  };
+
+  const handleExportPDF = async (reportType = selectedReport, params = reportParams) => {
+    if (!reportType) return;
+    try {
+      let url = '';
+      let exportParams = {};
+
+      const asOnDate = params.as_on_date || params.to_date || params.from_date;
+
+      if (reportType === 'trial-balance') {
+        url = '/reports/trial-balance/export/pdf';
+        exportParams = { as_on_date: asOnDate };
+      } else if (reportType === 'ledger') {
+        url = '/reports/general-ledger/export/pdf';
+        exportParams = { from_date: params.from_date, to_date: params.to_date, account_code: params.account };
+      } else if (reportType === 'profit-loss') {
+        url = '/reports/income-and-expenditure/export/pdf';
+        exportParams = { from_date: params.from_date, to_date: params.to_date };
+      } else if (reportType === 'balance-sheet') {
+        url = '/reports/balance-sheet/export/pdf';
+        exportParams = { as_on_date: asOnDate };
+      }
+
+      if (!url) {
+        setError('Export for this report is not yet implemented');
+        return;
+      }
+
+      setLoading(true);
+      const response = await api.get(url, { params: exportParams, responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', `${reportType}_${new Date().toISOString().split('T')[0]}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setLoading(false);
+    } catch (err) {
+      setLoading(false);
+      console.error('Export error:', err);
+      setError('Failed to export PDF');
+    }
+  };
+
+  const handleViewRecentReport = async (report) => {
+    setSelectedReport(report.type);
+    setReportParams(report.params);
+
+    // Trigger generation
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    setReportData(null);
+
+    try {
+      let response;
+      const params = report.params;
+
+      if (report.type === 'trial-balance') {
+        const asOnDate = params.as_on_date || params.to_date || params.from_date;
+        response = await api.get('/reports/trial-balance', {
+          params: { as_on_date: asOnDate }
+        });
+      } else if (report.type === 'ledger') {
+        response = await api.get('/reports/ledger', {
+          params: {
+            from_date: params.from_date,
+            to_date: params.to_date,
+            account_code: params.account
+          }
+        });
+      } else if (report.type === 'balance-sheet') {
+        response = await api.get('/reports/balance-sheet', {
+          params: {
+            from_date: params.from_date || params.as_on_date,
+            to_date: params.to_date || params.as_on_date
+          }
+        });
+      } else if (report.type === 'profit-loss') {
+        response = await api.get('/reports/income-and-expenditure', {
+          params: {
+            from_date: params.from_date,
+            to_date: params.to_date
+          }
+        });
+      } else if (report.type === 'cash-flow') {
+        response = await api.get('/reports/receipts-and-payments', {
+          params: {
+            from_date: params.from_date,
+            to_date: params.to_date
+          }
+        });
+      }
+
+      if (response) {
+        setReportData(response.data);
+        setSuccess(`${report.label} loaded from history`);
+        // Scroll to report results
+        window.scrollTo({ top: 400, behavior: 'smooth' });
+      }
+      setLoading(false);
+    } catch (err) {
+      setLoading(false);
+      setError('Failed to load historic report');
+      console.error(err);
+    }
+  };
+
+  const handleExportExcel = async (reportType = selectedReport, params = reportParams) => {
+    if (!reportType) return;
+    try {
+      let url = '';
+      let exportParams = {};
+
+      const asOnDate = params.as_on_date || params.to_date || params.from_date;
+
+      if (reportType === 'trial-balance') {
+        url = '/reports/trial-balance/export/excel';
+        exportParams = { as_on_date: asOnDate };
+      } else if (reportType === 'ledger') {
+        url = '/reports/general-ledger/export/excel';
+        exportParams = { from_date: params.from_date, to_date: params.to_date, account_code: params.account };
+      } else if (reportType === 'profit-loss') {
+        url = '/reports/income-and-expenditure/export/excel';
+        exportParams = { from_date: params.from_date, to_date: params.to_date };
+      } else if (reportType === 'balance-sheet') {
+        url = '/reports/balance-sheet/export/excel';
+        exportParams = { as_on_date: asOnDate };
+      }
+
+      if (!url) {
+        setError('Export for this report is not yet implemented');
+        return;
+      }
+
+      setLoading(true);
+      const response = await api.get(url, { params: exportParams, responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', `${reportType}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setLoading(false);
+    } catch (err) {
+      setLoading(false);
+      console.error('Export error:', err);
+      setError('Failed to export Excel');
     }
   };
 
@@ -2028,21 +2700,19 @@ const ReportsTab = () => {
             )}
 
             {(selectedReport === 'ledger' || selectedReport === 'daybook') && (
-              <div className="settings-form-group">
-                <label>Account</label>
-                <select
-                  value={reportParams.account}
-                  onChange={(e) => setReportParams({ ...reportParams, account: e.target.value })}
-                >
-                  <option value="">Select Account</option>
-                  <option value="all">All Accounts (with non-zero activity)</option>
-                  {accounts.map(account => (
-                    <option key={account.code} value={account.code}>
-                      {account.code} - {account.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                label="Account"
+                options={[
+                  { code: 'all', name: 'All Accounts (with non-zero activity)', id: 'all' },
+                  ...accountsWithBalance
+                ]}
+                value={reportParams.account}
+                onChange={(val) => setReportParams({ ...reportParams, account: val })}
+                placeholder="Search account code or name..."
+                valueKey="code"
+                displayKey="name"
+                minCharsForSearch={0}
+              />
             )}
 
             {/* Error and Success Messages */}
@@ -2081,8 +2751,20 @@ const ReportsTab = () => {
               </button>
               {reportData && (
                 <>
-                  <button className="settings-action-btn">Export PDF</button>
-                  <button className="settings-action-btn">Export Excel</button>
+                  <button
+                    className="settings-action-btn"
+                    onClick={handleExportPDF}
+                    disabled={loading}
+                  >
+                    Export PDF
+                  </button>
+                  <button
+                    className="settings-action-btn"
+                    onClick={handleExportExcel}
+                    disabled={loading}
+                  >
+                    Export Excel
+                  </button>
                 </>
               )}
             </div>
@@ -2394,6 +3076,7 @@ const ReportsTab = () => {
                             <th style={{ textAlign: 'right' }}>Debit</th>
                             <th style={{ textAlign: 'right' }}>Credit</th>
                             <th style={{ textAlign: 'right' }}>Balance</th>
+                            <th style={{ textAlign: 'center' }}>Attach.</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2409,6 +3092,17 @@ const ReportsTab = () => {
                               <td style={{ textAlign: 'right' }}>{entry.debit > 0 ? `₹${entry.debit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'}</td>
                               <td style={{ textAlign: 'right' }}>{entry.credit > 0 ? `₹${entry.credit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'}</td>
                               <td style={{ textAlign: 'right', fontWeight: 'bold' }}>₹{entry.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td style={{ textAlign: 'center' }}>
+                                {entry.has_attachment && (
+                                  <button
+                                    onClick={() => handleViewAttachment(entry.journal_entry_id)}
+                                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px' }}
+                                    title="View Attachment"
+                                  >
+                                    📎
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                           ))}
                           <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>
@@ -2441,6 +3135,7 @@ const ReportsTab = () => {
                         <th style={{ textAlign: 'right' }}>Debit</th>
                         <th style={{ textAlign: 'right' }}>Credit</th>
                         <th style={{ textAlign: 'right' }}>Balance</th>
+                        <th style={{ textAlign: 'center' }}>Attach.</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2464,6 +3159,17 @@ const ReportsTab = () => {
                             </td>
                             <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
                               ₹{entry.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {entry.has_attachment && (
+                                <button
+                                  onClick={() => handleViewAttachment(entry.journal_entry_id)}
+                                  style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px' }}
+                                  title="View Attachment"
+                                >
+                                  📎
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))
@@ -2495,6 +3201,12 @@ const ReportsTab = () => {
         )}
       </div>
 
+      <VoucherAttachmentsModal
+        isOpen={showAttachments}
+        onClose={() => setShowAttachments(false)}
+        journalEntryId={activeVoucherId}
+      />
+
       <div className="settings-section">
         <h3>Recent Reports</h3>
         <div className="settings-table-container">
@@ -2508,15 +3220,37 @@ const ReportsTab = () => {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>Trial Balance</td>
-                <td>2026-01-05 10:30 AM</td>
-                <td>Jan 2026</td>
-                <td>
-                  <button className="settings-action-btn">View</button>
-                  <button className="settings-action-btn">Download</button>
-                </td>
-              </tr>
+              {recentReports.length > 0 ? (
+                recentReports.map((report) => (
+                  <tr key={report.id}>
+                    <td>{report.label}</td>
+                    <td>{report.generatedOn}</td>
+                    <td>{report.period}</td>
+                    <td>
+                      <button
+                        className="settings-action-btn"
+                        onClick={() => handleViewRecentReport(report)}
+                        disabled={loading}
+                      >
+                        View
+                      </button>
+                      <button
+                        className="settings-action-btn"
+                        onClick={() => handleExportPDF(report.type, report.params)}
+                        disabled={loading}
+                      >
+                        Download
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
+                    No recent reports generated yet
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
