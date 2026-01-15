@@ -5,9 +5,72 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import declarative_base
 from typing import AsyncGenerator
 from app.config import settings
+from sqlalchemy import text
 import logging
+import shutil
+import os
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+async def perform_automated_backup():
+    """
+    Create a verified backup of the current database file using SQLite's backup API
+    This is safer than file copy as it ensures consistency
+    """
+    try:
+        # Get DB path from settings (e.g., sqlite+aiosqlite:///./gharmitra.db)
+        db_url = settings.DATABASE_URL
+        if "sqlite" not in db_url:
+            return
+
+        db_path = db_url.split("///")[-1]
+        if not os.path.exists(db_path):
+            return
+
+        backup_dir = os.path.join(os.path.dirname(db_path), "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = os.path.join(backup_dir, f"gharmitra_backup_{timestamp}.db")
+
+        # Use SQLite's backup API (better than file copy - ensures consistency)
+        import sqlite3
+        source = sqlite3.connect(db_path)
+        backup = sqlite3.connect(backup_file)
+
+        with backup:
+            source.backup(backup, pages=100, progress=None)
+
+        source.close()
+        backup.close()
+
+        # Verify backup integrity
+        backup_conn = sqlite3.connect(backup_file)
+        cursor = backup_conn.cursor()
+        cursor.execute("PRAGMA quick_check")
+        integrity = cursor.fetchone()[0]
+        backup_conn.close()
+
+        if integrity != "ok":
+            logger.error(f"  ❌ Backup verification FAILED: {integrity}")
+            os.remove(backup_file)  # Delete corrupted backup
+            return
+
+        logger.info(f"  ✓ Automated backup created & verified: {backup_file}")
+
+        # Keep last 10 backups (increased from 5 for better safety)
+        backups = sorted([f for f in os.listdir(backup_dir) if f.startswith("gharmitra_backup_")])
+        if len(backups) > 10:
+            for old_backup in backups[:-10]:
+                try:
+                    os.remove(os.path.join(backup_dir, old_backup))
+                    logger.info(f"  ✓ Removed old backup: {old_backup}")
+                except Exception as e:
+                    logger.warning(f"  ⚠ Could not remove old backup {old_backup}: {e}")
+
+    except Exception as e:
+        logger.warning(f"  ⚠ Automated backup failed: {e}")
 
 # Create async engine for SQLite
 engine = create_async_engine(
@@ -36,6 +99,28 @@ def import_models():
 async def init_db():
     """Initialize database - create all tables and run migrations"""
     try:
+        # 0. Perform automated backup before any operations
+        await perform_automated_backup()
+        
+        # 1. Enable WAL mode for crash resilience and optimize settings
+        async with engine.connect() as conn:
+            await conn.execute(text("PRAGMA journal_mode=WAL"))
+            await conn.execute(text("PRAGMA synchronous=NORMAL"))
+
+            # Additional optimizations for corruption prevention
+            await conn.execute(text("PRAGMA wal_autocheckpoint=1000"))  # Checkpoint every 1000 pages
+            await conn.execute(text("PRAGMA cache_size=-8000"))  # 8MB cache (better performance)
+            await conn.execute(text("PRAGMA temp_store=MEMORY"))  # Use memory for temp tables
+            await conn.execute(text("PRAGMA foreign_keys=ON"))  # Enable foreign key constraints
+            await conn.execute(text("PRAGMA optimize"))  # Optimize the database
+
+            # Run initial checkpoint
+            await conn.execute(text("PRAGMA wal_checkpoint(PASSIVE)"))
+            await conn.execute(text("PRAGMA analysis_limit=1000"))  # Limit for query analysis
+            await conn.execute(text("PRAGMA automatic_index=ON"))  # Enable automatic indexing
+
+            logger.info("  ✓ SQLite WAL mode enabled with optimizations")
+
         # Import models first to register them
         import_models()
         logger.info(f"Initializing database at {settings.DATABASE_URL}")
@@ -117,7 +202,7 @@ async def migrate_society_fields():
                     await db.commit()
                     logger.info("  ✓ Added water_amount to maintenance_bills table")
                 
-                # Add fixed_amount if missing (CR-021)
+                # Add fixed_amount if missing 
                 if "fixed_amount" not in bill_columns:
                     await db.execute(text("ALTER TABLE maintenance_bills ADD COLUMN fixed_amount REAL NOT NULL DEFAULT 0.0"))
                     await db.commit()
@@ -129,13 +214,13 @@ async def migrate_society_fields():
                     await db.commit()
                     logger.info("  ✓ Added sinking_fund_amount to maintenance_bills table")
                 
-                # Add repair_fund_amount if missing (CR-021)
+                # Add repair_fund_amount if missing 
                 if "repair_fund_amount" not in bill_columns:
                     await db.execute(text("ALTER TABLE maintenance_bills ADD COLUMN repair_fund_amount REAL NOT NULL DEFAULT 0.0"))
                     await db.commit()
                     logger.info("  ✓ Added repair_fund_amount to maintenance_bills table")
                 
-                # Add corpus_fund_amount if missing (CR-021)
+                # Add corpus_fund_amount if missing 
                 if "corpus_fund_amount" not in bill_columns:
                     await db.execute(text("ALTER TABLE maintenance_bills ADD COLUMN corpus_fund_amount REAL NOT NULL DEFAULT 0.0"))
                     await db.commit()
