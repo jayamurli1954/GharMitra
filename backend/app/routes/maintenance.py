@@ -55,6 +55,177 @@ from app.dependencies import get_current_user, get_current_admin_user
 from app.utils.number_to_words import number_to_words
 from app.utils.audit import log_action
 
+# ============= HELPER FUNCTIONS =============
+
+async def get_account_by_utility_type(
+    db: AsyncSession,
+    society_id: int,
+    utility_type: str,
+    default_code: str = None,
+    default_name: str = None,
+    default_type: AccountType = None
+) -> AccountCodeDB:
+    """
+    CR-021: Dynamic account lookup by utility_type.
+    Returns account with matching utility_type, or creates/returns default if not found.
+
+    Args:
+        db: Database session
+        society_id: Society ID
+        utility_type: Utility type to search for (e.g., 'maintenance_receivable', 'maintenance_income')
+        default_code: Default account code if utility_type not found
+        default_name: Default account name for creation
+        default_type: Default account type for creation
+
+    Returns:
+        AccountCodeDB object
+
+    Raises:
+        HTTPException if account not found and no defaults provided
+    """
+    # First, try to find account by utility_type
+    result = await db.execute(
+        select(AccountCodeDB).where(
+            and_(
+                AccountCodeDB.society_id == society_id,
+                AccountCodeDB.utility_type == utility_type
+            )
+        )
+    )
+    account = result.scalar_one_or_none()
+
+    if account:
+        return account
+
+    # If not found by utility_type, try default_code
+    if default_code:
+        result = await db.execute(
+            select(AccountCodeDB).where(
+                and_(
+                    AccountCodeDB.code == default_code,
+                    AccountCodeDB.society_id == society_id
+                )
+            )
+        )
+        account = result.scalar_one_or_none()
+
+        if account:
+            # Update existing account with utility_type
+            account.utility_type = utility_type
+            await db.flush()
+            return account
+
+        # Create new account with default values
+        if default_name and default_type:
+            account = AccountCodeDB(
+                code=default_code,
+                name=default_name,
+                type=default_type,
+                utility_type=utility_type,
+                society_id=society_id,
+                current_balance=Decimal("0.00")
+            )
+            db.add(account)
+            await db.flush()
+            return account
+
+    # No account found and no valid defaults
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"No account found with utility_type '{utility_type}' and no default account configured. Please configure the account in Chart of Accounts."
+    )
+
+async def validate_maintenance_accounts(db: AsyncSession, society_id: int) -> dict:
+    """
+    CR-021: Validate that all required accounts for maintenance billing are configured.
+    Returns dict with validation results and missing account details.
+
+    Required utility_types:
+    - maintenance_income: For crediting maintenance charges
+    - maintenance_receivable: For debiting member dues
+    - water_tanker (optional): For water tanker charges
+    - water_municipal (optional): For municipal water charges
+
+    Returns:
+        {
+            "valid": bool,
+            "missing_accounts": list of missing utility_types,
+            "configured_accounts": dict of found accounts
+        }
+    """
+    validation = {
+        "valid": True,
+        "missing_accounts": [],
+        "configured_accounts": {}
+    }
+
+    # Check for maintenance_income account
+    result = await db.execute(
+        select(AccountCodeDB).where(
+            and_(
+                AccountCodeDB.society_id == society_id,
+                AccountCodeDB.utility_type == 'maintenance_income'
+            )
+        )
+    )
+    maintenance_income = result.scalar_one_or_none()
+
+    if not maintenance_income:
+        validation["valid"] = False
+        validation["missing_accounts"].append({
+            "utility_type": "maintenance_income",
+            "description": "Maintenance Income Account (e.g., Monthly Maintenance Charges)",
+            "suggestion": "Please set utility_type='maintenance_income' for your maintenance income account (typically code 4000-4999)"
+        })
+    else:
+        validation["configured_accounts"]["maintenance_income"] = {
+            "code": maintenance_income.code,
+            "name": maintenance_income.name
+        }
+
+    # Check for maintenance_receivable account
+    result = await db.execute(
+        select(AccountCodeDB).where(
+            and_(
+                AccountCodeDB.society_id == society_id,
+                AccountCodeDB.utility_type == 'maintenance_receivable'
+            )
+        )
+    )
+    maintenance_receivable = result.scalar_one_or_none()
+
+    if not maintenance_receivable:
+        validation["valid"] = False
+        validation["missing_accounts"].append({
+            "utility_type": "maintenance_receivable",
+            "description": "Maintenance Dues Receivable Account (e.g., Member Receivables)",
+            "suggestion": "Please set utility_type='maintenance_receivable' for your receivables account (typically code 1100-1999)"
+        })
+    else:
+        validation["configured_accounts"]["maintenance_receivable"] = {
+            "code": maintenance_receivable.code,
+            "name": maintenance_receivable.name
+        }
+
+    # Optional: Check for water accounts (not required, but warn if missing)
+    result = await db.execute(
+        select(AccountCodeDB).where(
+            and_(
+                AccountCodeDB.society_id == society_id,
+                AccountCodeDB.utility_type.in_(['water_tanker', 'water_municipal'])
+            )
+        )
+    )
+    water_accounts = result.scalars().all()
+
+    if not water_accounts:
+        validation["warnings"] = [{
+            "message": "No water expense accounts configured. Water charges will be 0 unless you manually set override_water_charges.",
+            "suggestion": "Set utility_type='water_tanker' and 'water_municipal' for your water expense accounts (typically codes 5100-5120)"
+        }]
+
+    return validation
+
 async def get_flat_balance(db: AsyncSession, society_id: int, flat_id: int, as_of_date: Optional[date] = None) -> Decimal:
     """
     Calculate the current balance for a flat based on posted bills and payments.
@@ -173,6 +344,41 @@ async def get_apartment_settings(
         created_at=settings.created_at,
         updated_at=settings.updated_at
     )
+
+
+@router.get("/validate-accounts")
+async def validate_maintenance_billing_accounts(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    CR-021: Validate that all required accounts for maintenance billing are properly configured.
+
+    Checks for:
+    - maintenance_income account (required for crediting maintenance charges)
+    - maintenance_receivable account (required for debiting member dues)
+    - water expense accounts (optional but recommended)
+
+    Returns validation status and missing account details.
+    """
+    validation = await validate_maintenance_accounts(db, current_user.society_id)
+
+    if not validation["valid"]:
+        return {
+            "valid": False,
+            "message": "Maintenance billing accounts not fully configured",
+            "missing_accounts": validation["missing_accounts"],
+            "configured_accounts": validation.get("configured_accounts", {}),
+            "warnings": validation.get("warnings", []),
+            "action_required": "Please configure the missing accounts in Chart of Accounts by setting their utility_type fields"
+        }
+
+    return {
+        "valid": True,
+        "message": "All required maintenance billing accounts are configured",
+        "configured_accounts": validation["configured_accounts"],
+        "warnings": validation.get("warnings", [])
+    }
 
 
 @router.post("/settings", response_model=ApartmentSettingsResponse, status_code=status.HTTP_201_CREATED)
@@ -785,12 +991,25 @@ async def generate_bills(
     db: AsyncSession = Depends(get_db)
 ):
     """Generate maintenance bills for all flats for a given month (admin only)"""
+
+    # CR-021: Validate that required maintenance accounts are configured
+    validation = await validate_maintenance_accounts(db, current_user.society_id)
+    if not validation["valid"]:
+        missing_details = "\n".join([
+            f"- {acc['utility_type']}: {acc['description']}\n  {acc['suggestion']}"
+            for acc in validation["missing_accounts"]
+        ])
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot generate bills - required accounts not configured:\n\n{missing_details}\n\nPlease configure these accounts in Chart of Accounts before generating bills."
+        )
+
     # Get apartment settings (PRD: Multi-tenancy - Filter by society_id)
     result = await db.execute(
         select(SocietySettings).where(SocietySettings.society_id == current_user.society_id)
     )
     settings = result.scalar_one_or_none()
-    
+
     # If SocietySettings doesn't exist, try ApartmentSettingsDB (legacy)
     if not settings:
         result = await db.execute(select(ApartmentSettingsDB))
@@ -1851,7 +2070,7 @@ async def post_bills(
         # Add flat info to description for sub-ledger tracking (1100 Maintenance Dues Receivable)
         if flat_id is not None and flat_number:
             txn_desc = f"{txn_desc} - Flat: {flat_number}"
-        
+
         return Transaction(
             society_id=current_user.society_id,
             document_number=None,  # No individual document number - all transactions reference the JV
@@ -1866,6 +2085,7 @@ async def post_bills(
             expense_month=f"{month_name}, {request.year}",  # Store month/year for filtering
             added_by=int(current_user.id),
             journal_entry_id=journal_entry.id,  # All transactions reference the same JV
+            flat_id=flat_id,  # CR-021: Link transaction to flat for Member Dues Register tracking
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -2411,34 +2631,26 @@ async def reverse_individual_bill(
         # Posted bills can be reversed for dispute redressal
         
             # Create reversal journal entry
-        # CR-021_revised: Debit 4000 (Maintenance Charges), Credit 1100 (Maintenance Dues Receivable)
+        # CR-021: Dynamic account lookup - Debit Maintenance Income, Credit Maintenance Receivable
         reversal_amount = bill.total_amount
-        
-        # Get or create accounts
-        async def get_or_create_account(code, name, acct_type):
-            res = await db.execute(
-                select(AccountCodeDB).where(
-                    and_(
-                        AccountCodeDB.code == code,
-                        AccountCodeDB.society_id == current_user.society_id
-                    )
-                )
-            )
-            acct = res.scalar_one_or_none()
-            if not acct:
-                acct = AccountCodeDB(
-                    code=code,
-                    name=name,
-                    type=acct_type,
-                    society_id=current_user.society_id,
-                    current_balance=Decimal("0.00")
-                )
-                db.add(acct)
-                await db.flush()
-            return acct
-        
-        acct_4000 = await get_or_create_account("4000", "Maintenance Charges", AccountType.INCOME)
-        acct_1100 = await get_or_create_account("1100", "Maintenance Dues Receivable", AccountType.ASSET)
+
+        # CR-021: Get accounts dynamically by utility_type
+        acct_4000 = await get_account_by_utility_type(
+            db,
+            current_user.society_id,
+            'maintenance_income',
+            default_code="4000",
+            default_name="Monthly Maintenance Charges",
+            default_type=AccountType.INCOME
+        )
+        acct_1100 = await get_account_by_utility_type(
+            db,
+            current_user.society_id,
+            'maintenance_receivable',
+            default_code="1100",
+            default_name="Maintenance Dues Receivable",
+            default_type=AccountType.ASSET
+        )
         
         # Generate journal entry number
         entry_number = await generate_journal_entry_number(db, current_user.society_id, date.today())
@@ -2459,13 +2671,13 @@ async def reverse_individual_bill(
         await db.flush()
         
         # Create reversal transactions - both reference the same JV number (no individual document numbers)
-        # Debit 4000 (Maintenance Charges) - reduces income
+        # Debit Maintenance Income - reduces income
         reversal_txn_debit = Transaction(
             society_id=current_user.society_id,
             document_number=None,  # No individual document number - references the JV number
             type=TransactionType.EXPENSE,  # This is a reversal, so we debit the income account
             category="Bill Reversal",
-            account_code="4000",
+            account_code=acct_4000.code,  # CR-021: Dynamic account code
             amount=reversal_amount,
             description=f"Reversal: Bill {bill.bill_number} for Flat {bill.flat_number} - {request.reversal_reason}",
             date=date.today(),
@@ -2480,13 +2692,13 @@ async def reverse_individual_bill(
         db.add(reversal_txn_debit)
         acct_4000.current_balance -= reversal_amount  # Reduce income
         
-        # Credit 1100 (Maintenance Dues Receivable) - reduces receivable
+        # Credit Maintenance Receivable - reduces receivable
         reversal_txn_credit = Transaction(
             society_id=current_user.society_id,
             document_number=None,  # No individual document number - references the JV number
             type=TransactionType.INCOME,  # This is a reversal, so we credit the asset account
             category="Bill Reversal",
-            account_code="1100",
+            account_code=acct_1100.code,  # CR-021: Dynamic account code
             amount=reversal_amount,
             description=f"Reversal: Bill {bill.bill_number} for Flat {bill.flat_number} - {request.reversal_reason}",
             date=date.today(),
@@ -2495,6 +2707,7 @@ async def reverse_individual_bill(
             debit_amount=Decimal("0.00"),
             credit_amount=reversal_amount,
             journal_entry_id=reversal_entry.id,
+            flat_id=bill.flat_id,  # CR-021: Link transaction to flat for Member Dues Register tracking
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -2605,13 +2818,99 @@ async def regenerate_individual_bill(
             detail="Society settings not configured"
         )
     
-    # Calculate bill components from manual overrides
-    maintenance_amount = Decimal(str(request.override_maintenance or 0))
-    water_amount = Decimal(str(request.override_water or 0))
-    fixed_amount = Decimal(str(request.override_fixed or 0))
-    sinking_amount = Decimal(str(request.override_sinking or 0))
-    repair_amount = Decimal(str(request.override_repair or 0))
-    corpus_amount = Decimal(str(request.override_corpus or 0))
+    # CR-021: Auto-calculate bill components (same logic as normal bill generation)
+    # Get all flats to calculate per-person rates
+    all_flats_result = await db.execute(
+        select(Flat).where(Flat.society_id == current_user.society_id)
+    )
+    all_flats = all_flats_result.scalars().all()
+
+    # Calculate total water charges for the month
+    month_names = ['January', 'February', 'March', 'April', 'May', 'June',
+                   'July', 'August', 'September', 'October', 'November', 'December']
+    expense_month_str = f"{month_names[request.month - 1]}, {request.year}"
+
+    start_date = date(request.year, request.month, 1)
+    last_day = calendar.monthrange(request.year, request.month)[1]
+    end_date = date(request.year, request.month, last_day)
+
+    # Get water expenses dynamically
+    water_accounts_res = await db.execute(
+        select(AccountCodeDB.code).where(
+            and_(
+                AccountCodeDB.society_id == current_user.society_id,
+                AccountCodeDB.utility_type.in_(['water_tanker', 'water_municipal'])
+            )
+        )
+    )
+    water_account_codes = [row[0] for row in water_accounts_res.fetchall()]
+
+    total_water = Decimal("0.00")
+    if water_account_codes:
+        water_res = await db.execute(
+            select(func.sum(Transaction.amount)).where(
+                and_(
+                    Transaction.society_id == current_user.society_id,
+                    Transaction.account_code.in_(water_account_codes),
+                    or_(
+                        Transaction.expense_month == expense_month_str,
+                        and_(
+                            Transaction.expense_month.is_(None),
+                            Transaction.date.between(start_date, end_date)
+                        )
+                    )
+                )
+            )
+        )
+        total_water = Decimal(str(water_res.scalar() or "0.00"))
+
+    # Calculate total occupants (use adjusted if provided, otherwise use flat.occupants)
+    total_occupants = Decimal("0.0")
+    for f in all_flats:
+        if f.occupancy_status != OccupancyStatus.VACANT and f.occupants > 0:
+            # For the specific flat being regenerated, use adjusted_inmates if provided
+            if f.id == flat_id and request.adjusted_inmates is not None:
+                total_occupants += Decimal(str(request.adjusted_inmates))
+            else:
+                total_occupants += Decimal(str(f.occupants))
+
+    # Calculate per-person water rate
+    min_vacancy_fee = Decimal(str(settings.water_min_charge or 500))
+    vacancy_count = len([f for f in all_flats if f.occupancy_status == OccupancyStatus.VACANT or f.occupants == 0])
+    vacancy_fees_total = Decimal(str(vacancy_count)) * min_vacancy_fee
+    recoverable_water = max(Decimal("0.0"), total_water - vacancy_fees_total)
+    per_person_rate = (recoverable_water / total_occupants) if total_occupants > 0 else Decimal("0.0")
+
+    # Calculate water for this flat
+    if flat.occupancy_status == OccupancyStatus.VACANT or flat.occupants == 0:
+        water_amount = min_vacancy_fee
+        inmates_used = 0
+    else:
+        inmates_for_this_flat = request.adjusted_inmates if request.adjusted_inmates is not None else flat.occupants
+        water_amount = (per_person_rate * Decimal(str(inmates_for_this_flat))).quantize(Decimal("0.01"))
+        inmates_used = inmates_for_this_flat
+
+    # Calculate fixed expenses (equal distribution among all flats)
+    # Note: For regeneration, we use the same fixed expenses as were used in original generation
+    # This could be enhanced to accept selected_fixed_expense_codes if needed
+    fixed_amount = Decimal(str(request.override_fixed or 0))  # Keep override for now, can be enhanced later
+
+    # Calculate maintenance (sqft-based if rate > 0)
+    sqft_maint_rate = Decimal(str(settings.maintenance_rate_sqft or 0))
+    if sqft_maint_rate > 0:
+        maintenance_amount = (Decimal(str(flat.area_sqft)) * sqft_maint_rate).quantize(Decimal("0.01"))
+    else:
+        maintenance_amount = Decimal("0.00")
+
+    # Calculate funds from settings (equal distribution among all flats)
+    total_flats = len(all_flats)
+    sinking_total = Decimal(str(settings.sinking_fund_rate or 0))
+    repair_total = Decimal(str(settings.repair_fund_rate or 0))
+    corpus_total = Decimal(str(settings.corpus_fund_rate or 0))
+
+    sinking_amount = (sinking_total / Decimal(str(total_flats))).quantize(Decimal("0.01")) if total_flats > 0 else Decimal("0.00")
+    repair_amount = (repair_total / Decimal(str(total_flats))).quantize(Decimal("0.01")) if total_flats > 0 else Decimal("0.00")
+    corpus_amount = (corpus_total / Decimal(str(total_flats))).quantize(Decimal("0.01")) if total_flats > 0 else Decimal("0.00")
     
     # Get arrears (previous balance)
     calculation_date = date(request.year, request.month, 1)
@@ -2635,9 +2934,18 @@ async def regenerate_individual_bill(
     total_amount = Decimal(math.ceil(float(total_amount)))
     
     # Create bill breakdown
+    water_calculation = f"Vacant flat - Minimum charge: ₹{min_vacancy_fee}" if (flat.occupancy_status == OccupancyStatus.VACANT or flat.occupants == 0) else f"Per person: ₹{per_person_rate:.3f}, Occupants: {inmates_used}"
+
     breakdown = {
         "maintenance_sqft": float(maintenance_amount),
+        "maintenance_rate": float(sqft_maint_rate),
         "water_charges": float(water_amount),
+        "water_per_person_rate": float(per_person_rate),
+        "water_per_person": float(per_person_rate),
+        "inmates_used": inmates_used,
+        "occupants": inmates_used,
+        "inmates_adjusted": request.adjusted_inmates if request.adjusted_inmates is not None else None,
+        "water_calculation": water_calculation,
         "fixed_expenses": float(fixed_amount),
         "sinking_fund": float(sinking_amount),
         "repair_fund": float(repair_amount),
@@ -2646,8 +2954,11 @@ async def regenerate_individual_bill(
         "late_fee": float(late_fee),
         "monthly_charges": float(monthly_charges),
         "total_amount": float(total_amount),
+        "is_vacant": flat.occupancy_status == OccupancyStatus.VACANT or flat.occupants == 0,
+        "area_sqft": float(flat.area_sqft),
+        "flat_occupants": flat.occupants,
         "regenerated": True,
-        "regeneration_notes": request.notes or "Bill regenerated after reversal with manual input"
+        "regeneration_notes": request.notes or "Bill regenerated after reversal with auto-calculation"
     }
     
     # Generate bill number
@@ -2693,31 +3004,23 @@ async def regenerate_individual_bill(
     await db.refresh(new_bill)
     
     # Immediately post to accounting (Credit 4000, Debit 1100)
-    # Get or create accounts
-    async def get_or_create_account(code, name, acct_type):
-        res = await db.execute(
-            select(AccountCodeDB).where(
-                and_(
-                    AccountCodeDB.code == code,
-                    AccountCodeDB.society_id == current_user.society_id
-                )
-            )
-        )
-        acct = res.scalar_one_or_none()
-        if not acct:
-            acct = AccountCodeDB(
-                code=code,
-                name=name,
-                type=acct_type,
-                society_id=current_user.society_id,
-                current_balance=Decimal("0.00")
-            )
-            db.add(acct)
-            await db.flush()
-        return acct
-    
-    acct_4000 = await get_or_create_account("4000", "Maintenance Charges", AccountType.INCOME)
-    acct_1100 = await get_or_create_account("1100", "Maintenance Dues Receivable", AccountType.ASSET)
+    # CR-021: Get accounts dynamically by utility_type
+    acct_4000 = await get_account_by_utility_type(
+        db,
+        current_user.society_id,
+        'maintenance_income',
+        default_code="4000",
+        default_name="Monthly Maintenance Charges",
+        default_type=AccountType.INCOME
+    )
+    acct_1100 = await get_account_by_utility_type(
+        db,
+        current_user.society_id,
+        'maintenance_receivable',
+        default_code="1100",
+        default_name="Maintenance Dues Receivable",
+        default_type=AccountType.ASSET
+    )
     
     # Create journal entry for posting
     entry_number = await generate_journal_entry_number(db, current_user.society_id, date.today())
@@ -2739,13 +3042,13 @@ async def regenerate_individual_bill(
     await db.flush()
     
     # Create transactions - both reference the same JV number (no individual document numbers)
-    # Credit 4000 (Maintenance Charges) - increases income
+    # Credit Maintenance Income - increases income
     txn_credit = Transaction(
         society_id=current_user.society_id,
         document_number=None,  # No individual document number - references the JV number
         type=TransactionType.INCOME,
         category="Maintenance Bill",
-        account_code="4000",
+        account_code=acct_4000.code,  # CR-021: Dynamic account code
         amount=total_amount,
         description=f"Regenerated Bill {bill_number} for Flat {flat.flat_number} - {description}",
         date=date(request.year, request.month, 1),
@@ -2760,14 +3063,14 @@ async def regenerate_individual_bill(
     db.add(txn_credit)
     acct_4000.current_balance += total_amount  # Increase income
     
-    # Debit 1100 (Maintenance Dues Receivable) - increases receivable
+    # Debit Maintenance Receivable - increases receivable
     # Include flat info in description for sub-ledger tracking
     txn_debit = Transaction(
         society_id=current_user.society_id,
         document_number=None,  # No individual document number - references the JV number
         type=TransactionType.EXPENSE,  # For asset accounts, we use EXPENSE type but debit_amount
         category="Maintenance Bill",
-        account_code="1100",
+        account_code=acct_1100.code,  # CR-021: Dynamic account code
         amount=total_amount,
         description=f"Regenerated Bill {bill_number} - Flat: {flat.flat_number} - {description}",
         date=date(request.year, request.month, 1),
@@ -2776,6 +3079,7 @@ async def regenerate_individual_bill(
         debit_amount=total_amount,
         credit_amount=Decimal("0.00"),
         journal_entry_id=journal_entry.id,
+        flat_id=flat_id,  # CR-021: Link transaction to flat for Member Dues Register tracking
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )

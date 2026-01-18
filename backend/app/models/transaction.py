@@ -109,6 +109,7 @@ class TransactionUpdate(BaseModel):
     credit_amount: Optional[float] = Field(None, ge=0, description="Credit amount")
     payment_method: Optional[str] = Field(None, description="Payment method: 'cash' or 'bank'")
     bank_account_code: Optional[str] = Field(None, max_length=10, description="Bank account code")
+    flat_id: Optional[str] = None
     document_number: Optional[str] = Field(None, description="Optional document number/reference")
 
     @field_validator('amount', 'quantity', 'unit_price', 'debit_amount', 'credit_amount', mode='before')
@@ -145,6 +146,34 @@ class TransactionUpdate(BaseModel):
         
         return self
 
+class ReceiptCreate(BaseModel):
+    """Model for creating a specialized Receipt Voucher"""
+    date: str = Field(..., description="Voucher date (YYYY-MM-DD)")
+    account_code: str = Field(..., description="Income account (e.g., 1100)")
+    amount: float = Field(..., gt=0)
+    payment_method: Literal["cash", "bank"] = Field(..., description="Source: cash or bank")
+    bank_account_code: Optional[str] = None
+    description: str = Field(..., max_length=500)
+    quantity: Optional[float] = None
+    unit_price: Optional[float] = None
+    expense_month: Optional[str] = None
+    flat_id: Optional[str] = None
+    reference: Optional[str] = None
+    received_from: Optional[str] = Field(None, max_length=100, description="Name of the person/entity payment received from")
+
+class PaymentCreate(BaseModel):
+    """Model for creating a specialized Payment Voucher"""
+    date: str = Field(..., description="Voucher date (YYYY-MM-DD)")
+    account_code: str = Field(..., description="Expense account (e.g., 5001)")
+    amount: float = Field(..., gt=0)
+    payment_method: Literal["cash", "bank"] = Field(..., description="Destination: cash or bank")
+    bank_account_code: Optional[str] = None
+    description: str = Field(..., max_length=500)
+    quantity: Optional[float] = None
+    unit_price: Optional[float] = None
+    expense_month: Optional[str] = None
+    flat_id: Optional[str] = None
+    reference: Optional[str] = None
 
 class TransactionResponse(BaseModel):
     """Model for transaction response"""

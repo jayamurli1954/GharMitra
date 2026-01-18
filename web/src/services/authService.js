@@ -37,6 +37,12 @@ export const authService = {
    * Logout user
    */
   async logout() {
+    try {
+      // Trigger backup on logout (background on server)
+      await api.post('/database/backup-on-logout');
+    } catch (error) {
+      console.warn('Backup on logout failed:', error);
+    }
     await storage.removeItem('access_token');
     await storage.removeItem('user');
   },
@@ -68,19 +74,19 @@ export const authService = {
           // Continue to try API fetch
         }
       }
-      
+
       // Only try to fetch from API if we have a token but no user in storage
       const token = await storage.getItem('access_token');
       if (!token) {
         return null;
       }
-      
+
       // If not in storage but have token, try to fetch from API with timeout
       // But don't fail if API is unavailable - just return null
       try {
         const response = await Promise.race([
           api.get('/auth/me'),
-          new Promise((_, reject) => 
+          new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Request timeout')), 3000)
           )
         ]);
@@ -108,6 +114,16 @@ export const authService = {
    */
   async getToken() {
     return await storage.getItem('access_token');
+  },
+  /**
+   * Update stored user data (after profile update)
+   */
+  async updateStoredUser(userData) {
+    try {
+      await storage.setItem('user', JSON.stringify(userData));
+    } catch (error) {
+      console.error('Error updating stored user:', error);
+    }
   },
 };
 

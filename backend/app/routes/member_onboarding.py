@@ -101,6 +101,21 @@ class MemberUpdate(BaseModel):
     move_out_date: Optional[date] = Field(None, description="Date when member moved out")
 
 
+async def get_flat_balance(flat_id: int, db: AsyncSession) -> float:
+    """Helper to calculate current outstanding balance for a flat from GL"""
+    from sqlalchemy import func
+    from app.models_db import Transaction
+    
+    # 1100 is typically the Receivables/Flat account
+    result = await db.execute(
+        select(
+            func.sum(func.coalesce(Transaction.debit_amount, 0)) - 
+            func.sum(func.coalesce(Transaction.credit_amount, 0))
+        ).where(Transaction.flat_id == flat_id, Transaction.account_code == "1100")
+    )
+    return float(result.scalar() or 0.0)
+
+
 # ============ ADMIN ENDPOINTS ============
 @router.post("/", response_model=MemberResponse, status_code=status.HTTP_201_CREATED)
 async def create_member(
@@ -144,6 +159,16 @@ async def create_member(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Member with phone number '{member_data.phone_number}' already exists"
         )
+    
+    # ============ DUES CHECK FOR NEW OWNER ============
+    if member_data.member_type == "owner":
+        balance = await get_flat_balance(flat.id, db)
+        if balance > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot add new owner to Flat {flat.flat_number}. Outstanding dues: ₹{balance}. "
+                       f"Dues must be cleared or moved to outgoing owner's Personal Arrears Ledger first."
+            )
     
     # ============ FLAT OCCUPANCY VALIDATION ============
     # Check if flat is already occupied by an active member
@@ -697,6 +722,7 @@ class ChecklistUpdate(BaseModel):
     pan_card_status: str
     sale_deed_status: str
     rental_agreement_status: str
+    police_verification_status: str
     notes: Optional[str] = None
 
 @router.patch("/{member_id}/checklist")
@@ -750,6 +776,11 @@ async def update_checklist(
         checklist.rental_agreement_status = checklist_data.rental_agreement_status
         if checklist_data.rental_agreement_status == 'submitted':
             checklist.rental_agreement_submitted_date = date.today()
+            
+    if checklist.police_verification_status != checklist_data.police_verification_status:
+        checklist.police_verification_status = checklist_data.police_verification_status
+        if checklist_data.police_verification_status == 'submitted':
+            checklist.police_verification_date = date.today()
             
     checklist.notes = checklist_data.notes
     checklist.last_updated_by = int(current_user.id)

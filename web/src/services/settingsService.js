@@ -23,4 +23,3 @@ class SettingsService {
 
 export const settingsService = new SettingsService();
 export default settingsService;
-

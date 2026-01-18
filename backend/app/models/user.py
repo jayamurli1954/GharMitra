@@ -12,6 +12,11 @@ class UserRole(str, Enum):
     ADMIN = "admin"
     ACCOUNTANT = "accountant"
     RESIDENT = "resident"
+    CHAIRMAN = "chairman"
+    SECRETARY = "secretary"
+    TREASURER = "treasurer"
+    AUDITOR = "auditor"
+    SECURITY = "security"
 
 
 class UserBase(BaseModel):
@@ -40,6 +45,7 @@ class UserUpdate(BaseModel):
 class UserResponse(UserBase):
     id: str  # Changed from alias="_id" to match database model
     society_id: int = Field(default=1, description="Society ID for multi-tenancy")
+    flat_id: Optional[int] = Field(None, description="Linked Flat ID for Residents")
     society_name: Optional[str] = None  # Added for UI display
     terms_accepted: bool = Field(default=False)
     privacy_accepted: bool = Field(default=False)
@@ -54,6 +60,7 @@ class UserProfileUpdate(BaseModel):
     name: Optional[str] = None
     phone_number: Optional[str] = None
     email: Optional[EmailStr] = None
+    apartment_number: Optional[str] = None
     current_password: Optional[str] = None
     new_password: Optional[str] = None
 

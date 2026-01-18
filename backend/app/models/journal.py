@@ -95,6 +95,8 @@ class LedgerEntry(BaseModel):
     debit: float = 0.0
     credit: float = 0.0
     balance: float = 0.0
+    journal_entry_id: Optional[int] = None
+    has_attachment: bool = False
 
 
 class LedgerResponse(BaseModel):

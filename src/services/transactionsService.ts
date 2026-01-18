@@ -13,6 +13,7 @@ export interface Transaction {
   amount: number;
   description: string;
   date: string;
+  expense_month?: string; // Period allocation (e.g. "December, 2025")
   added_by: string;
   created_at: string;
   updated_at: string;
@@ -25,6 +26,7 @@ export interface TransactionCreate {
   amount: number;
   description: string;
   date?: string; // ISO date string (YYYY-MM-DD)
+  expense_month?: string; // Optional period tag (e.g. "December, 2025")
 }
 
 export interface TransactionUpdate {
@@ -34,6 +36,7 @@ export interface TransactionUpdate {
   amount?: number;
   description?: string;
   date?: string;
+  expense_month?: string;
 }
 
 export interface TransactionSummary {

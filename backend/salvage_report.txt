@@ -1,0 +1,195 @@
+RAW SALVAGE REPORT - gharmitra_corrupted.db
+========================================
+
+EMAILS FOUND (44):
+ - AAadmin@test.com
+ - AAresident@gharmitra.com
+ - Agarwal9000000012amit.agarwal@gharmitra.com
+ - Agarwal9000000012amit.agarwal@gharmitra.comOWNER
+ - Bansal9000000015kavita.bansal@gharmitra.com
+ - Bansal9000000015kavita.bansal@gharmitra.comOWNER
+ - Chatterjee9000000019alok.chatterjee@gharmitra.com
+ - Chatterjee9000000019alok.chatterjee@gharmitra.comOWNER
+ - Desai9000000008kiran.desai@gharmitra.com
+ - Desai9000000008kiran.desai@gharmitra.comOWNER
+ - Gupta9000000010mahesh.gupta@gharmitra.com
+ - Gupta9000000010mahesh.gupta@gharmitra.comOWNER
+ - Joshi9000000009sunita.joshi@gharmitra.com
+ - Joshi9000000009sunita.joshi@gharmitra.comOWNER
+ - Khanna9000000016sanjay.khanna@gharmitra.com
+ - Khanna9000000016sanjay.khanna@gharmitra.comOWNER
+ - Kulkarni9000000011deepa.kulkarni@gharmitra.com
+ - Kulkarni9000000011deepa.kulkarni@gharmitra.comOWNER
+ - Kumar8436784567vk@abc.com
+ - Kumar8436784567vk@abc.comOWNER
+ - Kumar8723452315Rajkumar@xyz.com
+ - Kumar8723452315Rajkumar@xyz.comOWNER
+ - Kumar9000000000ramesh.kumar@gharmitra.com
+ - Kumar9000000000ramesh.kumar@gharmitra.comOWNER
+ - Malhotra9000000014nitin.malhotra@gharmitra.com
+ - Malhotra9000000014nitin.malhotra@gharmitra.comOWNER
+ - Menon9000000018vijay.menon@gharmitra.com
+ - Menon9000000018vijay.menon@gharmitra.comOWNER
+ - Patel9000000003vikram.patel@gharmitra.com
+ - Patel9000000003vikram.patel@gharmitra.comOWNER
+ - Pillai9000000017rekha.pillai@gharmitra.com
+ - Pillai9000000017rekha.pillai@gharmitra.comOWNER
+ - Raj8731543845VVR@dfg.com
+ - Raj8731543845VVR@dfg.comOWNER
+ - Rao9000000001suresh.rao@gharmitra.com
+ - Rao9000000001suresh.rao@gharmitra.comOWNER
+ - Reddy9000000007arjun.reddy@gharmitra.com
+ - Reddy9000000007arjun.reddy@gharmitra.comOWNER
+ - Sharma9000000002anita.sharma@gharmitra.com
+ - Sharma9000000002anita.sharma@gharmitra.comOWNER
+ - Verma9000000013priya.verma@gharmitra.com
+ - Verma9000000013priya.verma@gharmitra.comOWNER
+ - admin@test.com
+ - resident@gharmitra.com
+
+ACCOUNT CODES / 4-DIGIT VOUCHERS FOUND (33):
+ 1001 1011 1051 1062 1073 1084 1100 1234 1646 1875 2000 2025 2026 2055 2057 2066 2077 2088 2469 2500 2718 3059 3134 3135 5000 5010 5100 5110 5130 5240 5500 6080 9500
+
+POTENTIAL NAMES FOUND (142):
+ - Compliance Certificate
+ - Software Subscriptions
+ - Generator Maintenance
+ - Festival Celebrations
+ - Chartered Accountant
+ - Renovation Approval
+ - Advance Maintenance
+ - Replacement Reserve
+ - Electricity Charges
+ - Election Nomination
+ - Housekeeping Salary
+ - Monthly Maintenance
+ - Member Registration
+ - Maintenance Charges
+ - Committee Approval
+ - Member Information
+ - Security Equipment
+ - Garbage Collection
+ - Building Insurance
+ - Complaint Category
+ - Permission Request
+ - Electrical Repairs
+ - Welfare Activities
+ - Other Receivables
+ - Clearance Details
+ - Committee Meeting
+ - Emergency Contact
+ - Security Services
+ - Financial Request
+ - Security Deposits
+ - Cleaning Services
+ - Lightthe Parking
+ - Retained Surplus
+ - Building Repairs
+ - Association Club
+ - Complainant Name
+ - Urgent Committee
+ - Lift Maintenance
+ - Maintenance Bill
+ - Maintenance Dues
+ - Plumbing Repairs
+ - Electricity Bill
+ - Retry Attachment
+ - Payment Receipt
+ - Service Request
+ - Interest Income
+ - Circular Notice
+ - Amenity Charges
+ - Payment Methods
+ - Budget Approval
+ - Alok Chatterjee
+ - Watchman Salary
+ - Receipt Voucher
+ - Safety Incident
+ - Resolution Date
+ - Amount Received
+ - Office Supplies
+ - Nitin Malhotra
+ - Vishnu Vardhan
+ - Billing Period
+ - Other Expenses
+ - Manager Salary
+ - Muralidhar Rao
+ - Generator Fuel
+ - Salary Payable
+ - Other Payables
+ - Complaint Form
+ - Fixed Deposits
+ - Admin Usertest
+ - Emergency Fund
+ - Deepa Kulkarni
+ - Meeting Notice
+ - Resident Test
+ - Painting Work
+ - Sanjay Khanna
+ - Water Charges
+ - Member Update
+ - Bill Reversal
+ - Bank Transfer
+ - Kavita Bansal
+ - Rental Income
+ - Legal Notice
+ - No Objection
+ - Reference No
+ - Bank Account
+ - Major Repair
+ - Water Tanker
+ - Cash Receipt
+ - Parking Fees
+ - Ramesh Kumar
+ - Rekha Pillai
+ - Amit Agarwal
+ - Cash Payment
+ - Other Income
+ - Anita Sharma
+ - Pest Control
+ - Capital Fund
+ - Bank Charges
+ - Vijaya Kumar
+ - Mahesh Gupta
+ - Bank Payment
+ - Sinking Fund
+ - Bank Receipt
+ - Main Account
+ - Late Payment
+ - Vikram Patel
+ - Test Receipt
+ - Sunita Joshi
+ - Bill Number
+ - Kitchen Tap
+ - Common Area
+ - Flat Number
+ - Arjun Reddy
+ - Other Staff
+ - Water Pumps
+ - Fire Safety
+ - Priya Verma
+ - Mrs Rajamma
+ - Vijay Menon
+ - Update Form
+ - Parking Rea
+ - Kiran Desai
+ - Corpus Fund
+ - Mr Ramanna
+ - Audit Fees
+ - Club House
+ - Mitra Demo
+ - Water Bill
+ - Admin User
+ - Test Owner
+ - Suresh Rao
+ - Legal Fees
+ - Water Pump
+ - Raj Kumar
+ - Bill None
+ - Bill Date
+ - Ram Singh
+ - Nagar Br
+ - Due Date
+ - In Form
+ - Bill To
+ - Flat No

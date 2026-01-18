@@ -54,6 +54,22 @@ class MemberOnboardingService {
     const response = await api.patch(`/member-onboarding/${memberId}`, memberData);
     return response.data;
   }
+
+  /**
+   * Get document checklist for a member
+   */
+  async getChecklist(memberId) {
+    const response = await api.get(`/member-onboarding/${memberId}/checklist`);
+    return response.data;
+  }
+
+  /**
+   * Update document checklist
+   */
+  async updateChecklist(memberId, checklistData) {
+    const response = await api.patch(`/member-onboarding/${memberId}/checklist`, checklistData);
+    return response.data;
+  }
 }
 
 export const memberOnboardingService = new MemberOnboardingService();

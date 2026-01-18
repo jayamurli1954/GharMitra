@@ -5,7 +5,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
 
 from app.database import get_db
 from app.utils.security import decode_access_token
@@ -82,6 +82,20 @@ async def get_current_user(
         logger = logging.getLogger(__name__)
         logger.warning(f"User {user.id} ({user.email}) has no society_id, defaulting to 1")
     
+    # Fetch flat_id for residents to support "My Ledger"
+    from app.models_db import Flat
+    flat_id = None
+    if user_role == UserRole.RESIDENT:
+        flat_result = await db.execute(
+            select(Flat.id).where(
+                and_(
+                    Flat.society_id == user_society_id,
+                    Flat.flat_number == user.apartment_number
+                )
+            )
+        )
+        flat_id = flat_result.scalar_one_or_none()
+
     return UserResponse(
         id=str(user.id),
         email=user.email,
@@ -90,6 +104,7 @@ async def get_current_user(
         phone_number=user.phone_number,
         role=user_role,
         society_id=user_society_id,  # PRD: Multi-tenancy
+        flat_id=flat_id,
         created_at=user.created_at
     )
 

@@ -74,7 +74,8 @@
     "name": "Maintenance Dues Receivable",
     "type": "asset",
     "description": "Outstanding maintenance dues from members (includes maintenance charges, water charges, and all bill components). This account must always match the member dues register.",
-    "category": "Current Assets"
+    "category": "Current Assets",
+    "utility_type": "maintenance_receivable"
   },
   {
     "code": "1110",
@@ -809,7 +810,8 @@
     "name": "Monthly Maintenance Charges",
     "type": "income",
     "description": "Regular monthly charges collected from all members for society upkeep, calculated per sq.ft. or flat size",
-    "category": "Maintenance Income (Primary Income)"
+    "category": "Maintenance Income (Primary Income)",
+    "utility_type": "maintenance_income"
   },
   {
     "code": "4010",
@@ -1113,1197 +1115,1197 @@
     "category": "Administrative Expenses"
   },
   {
-    "code": "5010",
+    "code": "5001",
     "name": "Salaries - Manager/Secretary",
     "type": "expense",
     "description": "Salary of society manager handling day-to-day operations",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5020",
+    "code": "5002",
     "name": "Salaries - Accountant",
     "type": "expense",
     "description": "Salary of accountant maintaining society books of accounts",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5030",
+    "code": "5003",
     "name": "Wages - Security Guards",
     "type": "expense",
     "description": "Wages paid to security guards protecting society premises",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5040",
+    "code": "5004",
     "name": "Wages - Housekeeping Staff",
     "type": "expense",
     "description": "Wages to cleaning staff maintaining cleanliness in common areas",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5050",
+    "code": "5005",
     "name": "Wages - Gardeners",
     "type": "expense",
     "description": "Wages to gardeners maintaining lawns, plants, landscaping",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5060",
+    "code": "5006",
     "name": "Wages - Plumbers",
     "type": "expense",
     "description": "Wages to full-time plumber for routine repairs and emergency fixing",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5070",
+    "code": "5007",
     "name": "Wages - Electricians",
     "type": "expense",
     "description": "Wages to electrician for electrical maintenance and repairs",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5080",
+    "code": "5008",
     "name": "Wages - Lift Operators",
     "type": "expense",
     "description": "Wages to lift operators (if lifts are not fully automatic)",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5090",
+    "code": "5009",
     "name": "Staff Bonus and Incentives",
     "type": "expense",
     "description": "Annual bonus, Diwali bonus, performance incentives to staff",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5100",
+    "code": "5010",
     "name": "Staff Provident Fund (Employer's Contribution)",
     "type": "expense",
     "description": "Society's 12% contribution to employee PF",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5110",
+    "code": "5011",
     "name": "ESI (Employer's Contribution)",
     "type": "expense",
     "description": "Society's contribution to Employee State Insurance (3.25% of wages for employees earning below ₹21,000)",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5120",
+    "code": "5012",
     "name": "Staff Welfare Expenses",
     "type": "expense",
     "description": "Medical reimbursement, festival gifts, welfare activities for staff",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5130",
+    "code": "5013",
     "name": "Staff Uniform",
     "type": "expense",
     "description": "Cost of uniforms provided to security guards, housekeeping staff",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5140",
+    "code": "5014",
     "name": "Staff Medical Expenses",
     "type": "expense",
     "description": "Medical insurance premium or medical expenses reimbursement for staff",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5150",
+    "code": "5015",
     "name": "Gratuity Payment",
     "type": "expense",
     "description": "Gratuity paid to employees on retirement/resignation (15 days salary for each year of service after 5 years)",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5160",
+    "code": "5016",
     "name": "Office Rent",
     "type": "expense",
     "description": "Rent paid if society office is in rented space (rare)",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5170",
+    "code": "5017",
     "name": "Printing and Stationery",
     "type": "expense",
     "description": "Cost of printing society notices, letterheads, bills, registers, pens, files",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5180",
+    "code": "5018",
     "name": "Postage and Courier",
     "type": "expense",
     "description": "Charges for sending legal notices, documents by post/courier",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5190",
+    "code": "5019",
     "name": "Telephone and Internet Charges",
     "type": "expense",
     "description": "Landline, broadband charges for society office",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5200",
+    "code": "5020",
     "name": "Mobile Expenses",
     "type": "expense",
     "description": "Mobile bills for manager, security supervisor",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5210",
+    "code": "5021",
     "name": "Computer Maintenance",
     "type": "expense",
     "description": "Annual maintenance, repairs of office computers",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5220",
+    "code": "5022",
     "name": "Software Subscription",
     "type": "expense",
     "description": "Cost of society management software like ApnaComplex, MyGate, NoBrokerHood",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5230",
+    "code": "5023",
     "name": "Office Equipment Maintenance",
     "type": "expense",
     "description": "Repairs of printers, scanners, photocopiers",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5240",
+    "code": "5024",
     "name": "Photocopier Expenses",
     "type": "expense",
     "description": "Toner, drums, service charges for photocopier",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5250",
+    "code": "5025",
     "name": "Books and Periodicals",
     "type": "expense",
     "description": "Law books, accounting books, magazines for office reference",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5260",
+    "code": "5026",
     "name": "Legal and Professional Fees",
     "type": "expense",
     "description": "General legal consultation charges for society matters",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5270",
+    "code": "5027",
     "name": "Auditor's Remuneration",
     "type": "expense",
     "description": "Fees paid to chartered accountant for annual audit",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5280",
+    "code": "5028",
     "name": "Consultant Fees",
     "type": "expense",
     "description": "Fees to management, technical, or financial consultants",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5290",
+    "code": "5029",
     "name": "Advocate Fees",
     "type": "expense",
     "description": "Lawyer's fees for legal disputes, court cases, drafting agreements",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5300",
+    "code": "5030",
     "name": "CA/Tax Consultant Fees",
     "type": "expense",
     "description": "Fees for tax filing, TDS returns, GST returns preparation",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5310",
+    "code": "5031",
     "name": "Property Valuation Charges",
     "type": "expense",
     "description": "Fees for property valuation by approved valuer",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5320",
+    "code": "5032",
     "name": "Architect Fees",
     "type": "expense",
     "description": "Fees paid to architect for building plans, renovation designs",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5330",
+    "code": "5033",
     "name": "Engineer Fees",
     "type": "expense",
     "description": "Structural engineer fees for structural audit, building assessment",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5340",
+    "code": "5034",
     "name": "Bank Charges and Commission",
     "type": "expense",
     "description": "Bank charges for cheque books, demand drafts, online transactions",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5350",
+    "code": "5035",
     "name": "Insurance Premium - Society",
     "type": "expense",
     "description": "Insurance for society property, buildings, assets against fire, earthquake",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5360",
+    "code": "5036",
     "name": "Insurance Premium - Employees",
     "type": "expense",
     "description": "Group medical insurance or personal accident insurance for staff",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5370",
+    "code": "5037",
     "name": "License and Registration Fees",
     "type": "expense",
     "description": "Annual license fees, registrar fees",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5380",
+    "code": "5038",
     "name": "Society Registration Renewal",
     "type": "expense",
     "description": "Fees for renewing society registration with registrar",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5390",
+    "code": "5039",
     "name": "AGM/Meeting Expenses",
     "type": "expense",
     "description": "Cost of conducting Annual General Meeting - refreshments, printing agenda",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5400",
+    "code": "5040",
     "name": "Notice Board Expenses",
     "type": "expense",
     "description": "Cost of notice boards, display boards, updating information",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5410",
+    "code": "5041",
     "name": "Festival Celebration Expenses",
     "type": "expense",
     "description": "Expenses for Diwali, Holi, Republic Day, Independence Day celebrations",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5420",
+    "code": "5042",
     "name": "Member Welfare Activities",
     "type": "expense",
     "description": "Expenses for health camps, blood donation camps, awareness programs",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5430",
+    "code": "5043",
     "name": "Annual Day Celebration",
     "type": "expense",
     "description": "Cost of organizing society annual day event",
     "category": "Administrative Expenses"
   },
   {
-    "code": "5500",
+    "code": "5044",
     "name": "Lift AMC Charges",
     "type": "expense",
     "description": "Annual Maintenance Contract charges paid to lift company for regular servicing",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5510",
+    "code": "5045",
     "name": "Lift Repair and Maintenance",
     "type": "expense",
     "description": "Expenses for lift repairs beyond AMC coverage",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5520",
+    "code": "5046",
     "name": "Lift Spare Parts",
     "type": "expense",
     "description": "Cost of replacement parts like ropes, pulleys, cables, buttons",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5530",
+    "code": "5047",
     "name": "Lift Breakdown Charges",
     "type": "expense",
     "description": "Emergency repair charges when lift breaks down",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5540",
+    "code": "5048",
     "name": "Lift Modernization Expenses",
     "type": "expense",
     "description": "Cost of upgrading old lift systems, installing new technology",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5550",
+    "code": "5049",
     "name": "Generator AMC Charges",
     "type": "expense",
     "description": "Annual maintenance contract for generator servicing",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5560",
+    "code": "5050",
     "name": "Generator Fuel (Diesel)",
     "type": "expense",
     "description": "Diesel consumed for running generator during power cuts",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5570",
+    "code": "5051",
     "name": "Generator Oil and Lubricants",
     "type": "expense",
     "description": "Engine oil, coolant, lubricants for generator maintenance",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5580",
+    "code": "5052",
     "name": "Generator Repair and Maintenance",
     "type": "expense",
     "description": "Repair expenses beyond AMC",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5590",
+    "code": "5053",
     "name": "Generator Spare Parts",
     "type": "expense",
     "description": "Cost of batteries, filters, spark plugs, alternator parts",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5600",
+    "code": "5054",
     "name": "Electrical Repair and Maintenance",
     "type": "expense",
     "description": "General electrical repairs in common areas",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5610",
+    "code": "5055",
     "name": "Electrical Materials and Supplies",
     "type": "expense",
     "description": "Bulbs, tubes, switches, wires, MCBs, fuses",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5620",
+    "code": "5056",
     "name": "Street Light Maintenance",
     "type": "expense",
     "description": "Repair and replacement of street lights in society",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5630",
+    "code": "5057",
     "name": "Common Area Lighting",
     "type": "expense",
     "description": "Maintaining lighting in lobbies, staircases, parking areas",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5640",
+    "code": "5058",
     "name": "Electrical Testing Charges",
     "type": "expense",
     "description": "Periodic electrical safety testing, earthing testing",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5650",
+    "code": "5059",
     "name": "Transformer Maintenance",
     "type": "expense",
     "description": "Maintenance of society's dedicated transformer",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5660",
+    "code": "5060",
     "name": "Electrical Contractor Charges",
     "type": "expense",
     "description": "Charges paid to electrical contractors for major electrical work",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5670",
+    "code": "5061",
     "name": "Plumbing Repair and Maintenance",
     "type": "expense",
     "description": "Fixing leaks, pipe repairs, tap replacements",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5680",
+    "code": "5062",
     "name": "Water Tank Cleaning Charges",
     "type": "expense",
     "description": "Professional tank cleaning charges (mandatory twice yearly)",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5690",
+    "code": "5063",
     "name": "Sump Cleaning Charges",
     "type": "expense",
     "description": "Underground sump cleaning and disinfection",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5700",
+    "code": "5064",
     "name": "Drainage Cleaning",
     "type": "expense",
     "description": "Cleaning clogged drains, manholes, drainage lines",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5710",
+    "code": "5065",
     "name": "Sewage Line Maintenance",
     "type": "expense",
     "description": "Repairing, unclogging sewage lines",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5720",
+    "code": "5066",
     "name": "STP Maintenance",
     "type": "expense",
     "description": "Sewage Treatment Plant maintenance, chemical costs, repairs",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5730",
+    "code": "5067",
     "name": "Plumbing Materials",
     "type": "expense",
     "description": "Pipes, elbows, taps, valves, plumbing fittings",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5740",
+    "code": "5068",
     "name": "Water Pump Repair",
     "type": "expense",
     "description": "Repairing water pumps for overhead tank filling",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5750",
+    "code": "5069",
     "name": "Building Repair and Maintenance",
     "type": "expense",
     "description": "General building repairs, crack filling, minor civil work",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5760",
+    "code": "5070",
     "name": "Painting - Common Areas",
     "type": "expense",
     "description": "Painting lobbies, staircases, corridors, parking areas",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5770",
+    "code": "5071",
     "name": "Painting - External",
     "type": "expense",
     "description": "External building painting, facade painting",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5780",
+    "code": "5072",
     "name": "Waterproofing Expenses",
     "type": "expense",
     "description": "Terrace waterproofing, external wall waterproofing",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5790",
+    "code": "5073",
     "name": "Flooring Repair",
     "type": "expense",
     "description": "Repairing broken tiles, marble, flooring in common areas",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5800",
+    "code": "5074",
     "name": "Wall Plastering",
     "type": "expense",
     "description": "Plastering walls, repairing damaged plaster",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5810",
+    "code": "5075",
     "name": "Compound Wall Repair",
     "type": "expense",
     "description": "Repairing boundary walls, plastering compound walls",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5820",
+    "code": "5076",
     "name": "Gate Maintenance",
     "type": "expense",
     "description": "Repairing, painting main gates, installing automatic gates",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5830",
+    "code": "5077",
     "name": "Road and Pathway Repair",
     "type": "expense",
     "description": "Repairing internal roads, pathways, paver blocks",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5840",
+    "code": "5078",
     "name": "Terrace Maintenance",
     "type": "expense",
     "description": "Terrace waterproofing, tile fixing, sunshade repairs",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5850",
+    "code": "5079",
     "name": "Seepage and Leakage Repair",
     "type": "expense",
     "description": "Fixing water seepage problems in walls, ceilings",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5860",
+    "code": "5080",
     "name": "Housekeeping Charges/AMC",
     "type": "expense",
     "description": "Contract charges to housekeeping company for cleaning services",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5870",
+    "code": "5081",
     "name": "Cleaning Materials and Supplies",
     "type": "expense",
     "description": "Phenyl, detergents, mops, brooms, garbage bags, disinfectants",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5880",
+    "code": "5082",
     "name": "Garbage Collection Charges",
     "type": "expense",
     "description": "Charges to municipal corporation or private agency for garbage collection",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5890",
+    "code": "5083",
     "name": "Pest Control Charges",
     "type": "expense",
     "description": "Periodic pest control, termite control, rodent control services",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5900",
+    "code": "5084",
     "name": "Drain Cleaning Charges",
     "type": "expense",
     "description": "Professional drain cleaning services",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5910",
+    "code": "5085",
     "name": "Septic Tank Cleaning",
     "type": "expense",
     "description": "Septic tank evacuation charges",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5920",
+    "code": "5086",
     "name": "Disinfection and Fumigation",
     "type": "expense",
     "description": "Disinfection services, especially during epidemics",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5930",
+    "code": "5087",
     "name": "Gardening and Landscaping",
     "type": "expense",
     "description": "Professional gardening services, landscape maintenance",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5940",
+    "code": "5088",
     "name": "Plants and Seeds",
     "type": "expense",
     "description": "Purchasing new plants, seeds, saplings for garden",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5950",
+    "code": "5089",
     "name": "Fertilizers and Manure",
     "type": "expense",
     "description": "Organic manure, fertilizers, soil nutrients for plants",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5960",
+    "code": "5090",
     "name": "Garden Tools and Equipment",
     "type": "expense",
     "description": "Lawn mowers, hedge trimmers, garden tools",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5970",
+    "code": "5091",
     "name": "Tree Trimming Charges",
     "type": "expense",
     "description": "Professional tree cutting, pruning services",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "5980",
+    "code": "5092",
     "name": "Horticulture Services",
     "type": "expense",
     "description": "Expert services for maintaining lawns, flower beds",
     "category": "Building Maintenance Expenses"
   },
   {
-    "code": "6000",
+    "code": "5093",
     "name": "Electricity Charges - Common Areas",
     "type": "expense",
     "description": "Electricity bills for lobbies, staircases, corridors, parking lighting",
     "category": "Utilities"
   },
   {
-    "code": "6010",
+    "code": "5094",
     "name": "Electricity Charges - Lift",
     "type": "expense",
     "description": "Electricity consumed by lifts",
     "category": "Utilities"
   },
   {
-    "code": "6020",
+    "code": "5095",
     "name": "Electricity Charges - Water Pump",
     "type": "expense",
     "description": "Power consumed by water pumps filling overhead tanks",
     "category": "Utilities"
   },
   {
-    "code": "6030",
+    "code": "5096",
     "name": "Electricity Charges - Street Lights",
     "type": "expense",
     "description": "Electricity for street lights and compound lighting",
     "category": "Utilities"
   },
   {
-    "code": "6040",
+    "code": "5097",
     "name": "Electricity Charges - Clubhouse",
     "type": "expense",
     "description": "Electricity bills for clubhouse, gym, swimming pool",
     "category": "Utilities"
   },
   {
-    "code": "6050",
+    "code": "5098",
     "name": "Electricity Charges - Office",
     "type": "expense",
     "description": "Power consumption in society office",
     "category": "Utilities"
   },
   {
-    "code": "6060",
+    "code": "5099",
     "name": "Electricity Connection Charges",
     "type": "expense",
     "description": "New connection charges, meter installation charges, load enhancement charges",
     "category": "Utilities"
   },
   {
-    "code": "6070",
+    "code": "5100",
     "name": "Water Charges - Corporation/Municipal",
     "type": "expense",
     "description": "Water bills from municipal corporation",
     "category": "Utilities"
   },
   {
-    "code": "6080",
+    "code": "5101",
     "name": "Water Tanker Charges",
     "type": "expense",
     "description": "Cost of water tankers during water shortage",
     "category": "Utilities"
   },
   {
-    "code": "6090",
+    "code": "5102",
     "name": "Borewell Maintenance",
     "type": "expense",
     "description": "Borewell cleaning, pump maintenance, motor repairs",
     "category": "Utilities"
   },
   {
-    "code": "6100",
+    "code": "5103",
     "name": "Water Testing Charges",
     "type": "expense",
     "description": "Laboratory testing of water quality",
     "category": "Utilities"
   },
   {
-    "code": "6110",
+    "code": "5104",
     "name": "Water Treatment Charges",
     "type": "expense",
     "description": "Charges for water treatment, chlorination",
     "category": "Utilities"
   },
   {
-    "code": "6120",
+    "code": "5105",
     "name": "Gas Connection Charges",
     "type": "expense",
     "description": "PNG connection charges if applicable",
     "category": "Utilities"
   },
   {
-    "code": "6130",
+    "code": "5106",
     "name": "Sewage Charges",
     "type": "expense",
     "description": "Sewage disposal charges if municipal corporation charges separately",
     "category": "Utilities"
   },
   {
-    "code": "6200",
+    "code": "5107",
     "name": "Security Service Charges/AMC",
     "type": "expense",
     "description": "Contract charges to professional security agency",
     "category": "Security and Safety"
   },
   {
-    "code": "6210",
+    "code": "5108",
     "name": "Security Guard Uniform",
     "type": "expense",
     "description": "Uniforms for security guards",
     "category": "Security and Safety"
   },
   {
-    "code": "6220",
+    "code": "5109",
     "name": "Security Equipment",
     "type": "expense",
     "description": "Torches, whistles, batons, reflective jackets for guards",
     "category": "Security and Safety"
   },
   {
-    "code": "6230",
+    "code": "5110",
     "name": "CCTV Maintenance and Repair",
     "type": "expense",
     "description": "Servicing, repairing CCTV cameras and DVR",
     "category": "Security and Safety"
   },
   {
-    "code": "6240",
+    "code": "5111",
     "name": "CCTV Recording System",
     "type": "expense",
     "description": "Hard drives, DVR upgrades for footage storage",
     "category": "Security and Safety"
   },
   {
-    "code": "6250",
+    "code": "5112",
     "name": "Access Control System Maintenance",
     "type": "expense",
     "description": "Maintaining biometric, RFID access control systems",
     "category": "Security and Safety"
   },
   {
-    "code": "6260",
+    "code": "5113",
     "name": "Boom Barrier Maintenance",
     "type": "expense",
     "description": "Servicing automatic boom barriers at entry/exit",
     "category": "Security and Safety"
   },
   {
-    "code": "6270",
+    "code": "5114",
     "name": "Intercom System Maintenance",
     "type": "expense",
     "description": "Maintaining intercom between flats and gate",
     "category": "Security and Safety"
   },
   {
-    "code": "6280",
+    "code": "5115",
     "name": "Walkie-Talkie Expenses",
     "type": "expense",
     "description": "Walkie-talkie sets for security guard communication",
     "category": "Security and Safety"
   },
   {
-    "code": "6290",
+    "code": "5116",
     "name": "Fire Safety Equipment Maintenance",
     "type": "expense",
     "description": "Annual maintenance of fire extinguishers, hydrants, sprinklers",
     "category": "Security and Safety"
   },
   {
-    "code": "6300",
+    "code": "5117",
     "name": "Fire Extinguisher Refilling",
     "type": "expense",
     "description": "Refilling expired fire extinguishers",
     "category": "Security and Safety"
   },
   {
-    "code": "6310",
+    "code": "5118",
     "name": "Fire Safety Audit Fees",
     "type": "expense",
     "description": "Professional fire safety audit charges",
     "category": "Security and Safety"
   },
   {
-    "code": "6320",
+    "code": "5119",
     "name": "First Aid Supplies",
     "type": "expense",
     "description": "First aid kits, medicines for emergency use",
     "category": "Security and Safety"
   },
   {
-    "code": "6330",
+    "code": "5120",
     "name": "Safety Signage",
     "type": "expense",
     "description": "Fire exit signs, emergency signs, safety instruction boards",
     "category": "Security and Safety"
   },
   {
-    "code": "6400",
+    "code": "5121",
     "name": "Clubhouse Maintenance",
     "type": "expense",
     "description": "General upkeep of clubhouse building and facilities",
     "category": "Amenity Expenses"
   },
   {
-    "code": "6410",
+    "code": "5122",
     "name": "Gymnasium Equipment Maintenance",
     "type": "expense",
     "description": "AMC and repairs of gym equipment",
     "category": "Amenity Expenses"
   },
   {
-    "code": "6420",
+    "code": "5123",
     "name": "Swimming Pool Maintenance",
     "type": "expense",
     "description": "Pool cleaning, filtration system maintenance, chemical balance",
     "category": "Amenity Expenses"
   },
   {
-    "code": "6430",
+    "code": "5124",
     "name": "Swimming Pool Chemicals",
     "type": "expense",
     "description": "Chlorine, pH balancing chemicals, algaecides",
     "category": "Amenity Expenses"
   },
   {
-    "code": "6440",
+    "code": "5125",
     "name": "Sports Equipment Maintenance",
     "type": "expense",
     "description": "Maintaining badminton court, tennis court, basketball court",
     "category": "Amenity Expenses"
   },
   {
-    "code": "6450",
+    "code": "5126",
     "name": "Community Hall Maintenance",
     "type": "expense",
     "description": "Maintaining furniture, AC, electrical fittings in hall",
     "category": "Amenity Expenses"
   },
   {
-    "code": "6460",
+    "code": "5127",
     "name": "AC Maintenance - Clubhouse/Hall",
     "type": "expense",
     "description": "Servicing, repairs, gas filling of air conditioners",
     "category": "Amenity Expenses"
   },
   {
-    "code": "6470",
+    "code": "5128",
     "name": "Recreation Activity Expenses",
     "type": "expense",
     "description": "Organizing yoga classes, Zumba, fitness activities",
     "category": "Amenity Expenses"
   },
   {
-    "code": "6500",
+    "code": "5129",
     "name": "Property Tax",
     "type": "expense",
     "description": "Annual property tax payable to municipal corporation",
     "category": "Statutory Expenses"
   },
   {
-    "code": "6510",
+    "code": "5130",
     "name": "Water Tax",
     "type": "expense",
     "description": "Annual water tax if charged separately by municipality",
     "category": "Statutory Expenses"
   },
   {
-    "code": "6520",
+    "code": "5131",
     "name": "Sewage Tax",
     "type": "expense",
     "description": "Sewage charges if levied by local authority",
     "category": "Statutory Expenses"
   },
   {
-    "code": "6530",
+    "code": "5132",
     "name": "Professional Tax",
     "type": "expense",
     "description": "Professional tax on society (if applicable)",
     "category": "Statutory Expenses"
   },
   {
-    "code": "6540",
+    "code": "5133",
     "name": "Registration and Filing Fees",
     "type": "expense",
     "description": "Annual return filing fees with registrar of societies",
     "category": "Statutory Expenses"
   },
   {
-    "code": "6550",
+    "code": "5134",
     "name": "ROC Filing Fees",
     "type": "expense",
     "description": "Registrar of Companies fees (if society is registered as company)",
     "category": "Statutory Expenses"
   },
   {
-    "code": "6560",
+    "code": "5135",
     "name": "Income Tax",
     "type": "expense",
     "description": "Tax payable if society has taxable income exceeding exemption limit",
     "category": "Statutory Expenses"
   },
   {
-    "code": "6600",
+    "code": "5136",
     "name": "Interest on Loans",
     "type": "expense",
     "description": "Interest paid on term loans from banks",
     "category": "Financial Expenses"
   },
   {
-    "code": "6610",
+    "code": "5137",
     "name": "Bank Charges",
     "type": "expense",
     "description": "Service charges, transaction charges, SMS charges",
     "category": "Financial Expenses"
   },
   {
-    "code": "6620",
+    "code": "5138",
     "name": "Bank Service Charges",
     "type": "expense",
     "description": "Cheque return charges, online payment charges",
     "category": "Financial Expenses"
   },
   {
-    "code": "6630",
+    "code": "5139",
     "name": "Loan Processing Charges",
     "type": "expense",
     "description": "One-time charges for loan processing",
     "category": "Financial Expenses"
   },
   {
-    "code": "6640",
+    "code": "5140",
     "name": "Cheque Book Charges",
     "type": "expense",
     "description": "Charges for issuing new cheque books",
     "category": "Financial Expenses"
   },
   {
-    "code": "6700",
+    "code": "5141",
     "name": "Depreciation - Building and Infrastructure",
     "type": "expense",
     "description": "Annual depreciation on building as per accounting policy",
     "category": "Depreciation"
   },
   {
-    "code": "6710",
+    "code": "5142",
     "name": "Depreciation - Lifts",
     "type": "expense",
     "description": "Depreciation on lifts over useful life (typically 15 years)",
     "category": "Depreciation"
   },
   {
-    "code": "6720",
+    "code": "5143",
     "name": "Depreciation - Generator",
     "type": "expense",
     "description": "Depreciation on DG set (typically 8-10 years)",
     "category": "Depreciation"
   },
   {
-    "code": "6730",
+    "code": "5144",
     "name": "Depreciation - Equipment",
     "type": "expense",
     "description": "Depreciation on gym equipment, CCTV, office equipment",
     "category": "Depreciation"
   },
   {
-    "code": "6740",
+    "code": "5145",
     "name": "Depreciation - Furniture and Fixtures",
     "type": "expense",
     "description": "Depreciation on all furniture",
     "category": "Depreciation"
   },
   {
-    "code": "6750",
+    "code": "5146",
     "name": "Depreciation - CCTV and Security Systems",
     "type": "expense",
     "description": "Depreciation on security equipment",
     "category": "Depreciation"
   },
   {
-    "code": "6800",
+    "code": "5147",
     "name": "Income Tax Expense",
     "type": "expense",
     "description": "Final tax expense for the year",
     "category": "Taxes and Legal"
   },
   {
-    "code": "6810",
+    "code": "5148",
     "name": "TDS Deducted",
     "type": "expense",
     "description": "TDS amounts shown separately for reconciliation with Form 26AS",
     "category": "Taxes and Legal"
   },
   {
-    "code": "6820",
+    "code": "5149",
     "name": "Legal Expenses and Court Fees",
     "type": "expense",
     "description": "Court fees, stamp paper, legal documentation charges",
     "category": "Taxes and Legal"
   },
   {
-    "code": "6830",
+    "code": "5150",
     "name": "Dispute Resolution Expenses",
     "type": "expense",
     "description": "Arbitration, mediation charges for resolving disputes",
     "category": "Taxes and Legal"
   },
   {
-    "code": "6840",
+    "code": "5151",
     "name": "Notice Charges",
     "type": "expense",
     "description": "Legal notice charges, advocate fees for sending notices",
     "category": "Taxes and Legal"
   },
   {
-    "code": "6900",
+    "code": "5152",
     "name": "Advertisement and Publicity",
     "type": "expense",
     "description": "Advertising society facilities, newspaper ads",
     "category": "Other Expenses"
   },
   {
-    "code": "6910",
+    "code": "5153",
     "name": "Society Newsletter/Magazine",
     "type": "expense",
     "description": "Cost of publishing monthly/quarterly society newsletter",
     "category": "Other Expenses"
   },
   {
-    "code": "6920",
+    "code": "5154",
     "name": "Website Maintenance",
     "type": "expense",
     "description": "Charges for maintaining society website",
     "category": "Other Expenses"
   },
   {
-    "code": "6930",
+    "code": "5155",
     "name": "Mobile App Subscription",
     "type": "expense",
     "description": "Subscription for society management mobile app",
     "category": "Other Expenses"
   },
   {
-    "code": "6940",
+    "code": "5156",
     "name": "Conveyance and Travel",
     "type": "expense",
     "description": "Local travel expenses for society work",
     "category": "Other Expenses"
   },
   {
-    "code": "6950",
+    "code": "5157",
     "name": "Vehicle Maintenance",
     "type": "expense",
     "description": "Maintenance if society owns vehicle (rare)",
     "category": "Other Expenses"
   },
   {
-    "code": "6960",
+    "code": "5158",
     "name": "Fuel - Vehicle",
     "type": "expense",
     "description": "Petrol/diesel for society vehicle",
     "category": "Other Expenses"
   },
   {
-    "code": "6970",
+    "code": "5159",
     "name": "Repairs and Maintenance - General",
     "type": "expense",
     "description": "General repairs not classified elsewhere",
     "category": "Other Expenses"
   },
   {
-    "code": "6980",
+    "code": "5160",
     "name": "Donation and Contributions",
     "type": "expense",
     "description": "Donations to charitable causes",
     "category": "Other Expenses"
   },
   {
-    "code": "6990",
+    "code": "5161",
     "name": "CSR Activities",
     "type": "expense",
     "description": "Corporate Social Responsibility activities",
     "category": "Other Expenses"
   },
   {
-    "code": "7000",
+    "code": "5162",
     "name": "Bad Debts Written Off",
     "type": "expense",
     "description": "Irrecoverable maintenance dues written off",
     "category": "Other Expenses"
   },
   {
-    "code": "7010",
+    "code": "5163",
     "name": "Loss on Sale of Assets",
     "type": "expense",
     "description": "Loss when old assets sold below book value",
     "category": "Other Expenses"
   },
   {
-    "code": "7020",
+    "code": "5164",
     "name": "Preliminary Expenses Written Off",
     "type": "expense",
     "description": "Initial society formation expenses amortized",
     "category": "Other Expenses"
   },
   {
-    "code": "7030",
+    "code": "5165",
     "name": "Miscellaneous Expenses",
     "type": "expense",
     "description": "Small expenses not fitting any other category",
     "category": "Other Expenses"
   },
   {
-    "code": "7100",
+    "code": "5166",
     "name": "Transfer to Sinking Fund",
     "type": "expense",
     "description": "Amount transferred from general fund to sinking fund as per annual requirement",
     "category": "Fund Transfer Accounts"
   },
   {
-    "code": "7110",
+    "code": "5167",
     "name": "Transfer from Sinking Fund",
     "type": "expense",
     "description": "Amount withdrawn from sinking fund for approved major repairs",
     "category": "Fund Transfer Accounts"
   },
   {
-    "code": "7120",
+    "code": "5168",
     "name": "Transfer to Major Repair Fund",
     "type": "expense",
     "description": "Amount set aside from surplus for major repair fund",
     "category": "Fund Transfer Accounts"
   },
   {
-    "code": "7130",
+    "code": "5169",
     "name": "Transfer from Major Repair Fund",
     "type": "expense",
     "description": "Utilization of major repair fund for approved works",
     "category": "Fund Transfer Accounts"
   },
   {
-    "code": "7200",
+    "code": "5170",
     "name": "Outstanding Maintenance - Member wise ledger",
     "type": "expense",
     "description": "Individual ledger for each flat showing outstanding dues",
     "category": "Member-wise Tracking Accounts"
   },
   {
-    "code": "7210",
+    "code": "5171",
     "name": "Advance Maintenance - Member wise ledger",
     "type": "expense",
     "description": "Individual ledger showing advance payments by members",

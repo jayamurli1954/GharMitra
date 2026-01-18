@@ -27,6 +27,7 @@ class ResourceFileResponse(BaseModel):
 
     class Config:
         populate_by_name = True
+        from_attributes = True
 
 
 class NOCGenerateRequest(BaseModel):

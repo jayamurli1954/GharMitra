@@ -6,6 +6,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import memberOnboardingService from '../services/memberOnboardingService';
 import flatsService from '../services/flatsService';
+import moveGovernanceService from '../services/moveGovernanceService';
+import accountingService from '../services/accountingService';
 
 const MembersScreen = () => {
   const navigate = useNavigate();
@@ -26,7 +28,7 @@ const MembersScreen = () => {
       const membersList = await memberOnboardingService.listMembers(filter);
       console.log(`Loaded ${membersList.length} members`);
       setMembers(membersList);
-      
+
       // Debug: Check if we're getting data
       if (membersList.length === 0) {
         console.warn('No members found. Checking debug endpoint...');
@@ -234,8 +236,16 @@ const MembersScreen = () => {
 const MemberRow = ({ member, onUpdate, isEven }) => {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showMoveOut, setShowMoveOut] = useState(false);
   const [moveOutDate, setMoveOutDate] = useState('');
+  const [showArrearsModal, setShowArrearsModal] = useState(false);
+  const [showChecklistModal, setShowChecklistModal] = useState(false);
+  const [finalBill, setFinalBill] = useState(null);
+  const [flatBalance, setFlatBalance] = useState(0);
+  const [showMoveOut, setShowMoveOut] = useState(false);
+  const [showDamageForm, setShowDamageForm] = useState(false);
+  const [damageAmount, setDamageAmount] = useState('');
+  const [damageDesc, setDamageDesc] = useState('');
+  const [instantPost, setInstantPost] = useState(true);
 
   const [editData, setEditData] = useState({
     name: member.name || '',
@@ -243,6 +253,8 @@ const MemberRow = ({ member, onUpdate, isEven }) => {
     phone_number: member.phone_number || '',
     total_occupants: member.total_occupants || 1,
   });
+
+  const isActive = member.status === 'active' || (!member.move_out_date && member.status !== 'inactive');
 
   const handleSave = async () => {
     setSaving(true);
@@ -292,6 +304,66 @@ const MemberRow = ({ member, onUpdate, isEven }) => {
       alert(errorMsg);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRaiseDamageClaim = async () => {
+    if (!damageAmount || !damageDesc) {
+      alert('Please enter both amount and description for the claim');
+      return;
+    }
+    setSaving(true);
+    try {
+      await moveGovernanceService.raiseDamageClaim({
+        flat_id: member.flat_id,
+        amount: parseFloat(damageAmount),
+        description: damageDesc,
+        instant_post: instantPost
+      });
+      alert(instantPost ? 'Damage claim raised and ledger updated!' : 'Charge queued for next monthly bill!');
+      setDamageAmount('');
+      setDamageDesc('');
+      setShowDamageForm(false);
+      if (instantPost) await loadFlatBalance();
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to raise damage claim');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDownloadNDC = async () => {
+    try {
+      await moveGovernanceService.downloadNDC(member.flat_id, member.flat_number);
+    } catch (error) {
+      alert(error.response?.data?.detail || "Failed to download NDC. Ensure flat balance is zero.");
+    }
+  };
+
+  const handleDownloadPolice = async () => {
+    try {
+      await moveGovernanceService.downloadPoliceVerification(member.id, member.name);
+    } catch (error) {
+      alert(error.response?.data?.detail || "Failed to download Police Verification Form.");
+    }
+  };
+
+  const loadFlatBalance = async () => {
+    try {
+      // Fetch final bill calculation from move governance service
+      const data = await moveGovernanceService.calculateFinalBill(member.flat_id);
+      setFinalBill(data);
+      setFlatBalance(data.total_payable);
+    } catch (error) {
+      console.error("Error loading balance:", error);
+      // Fallback to simple balance if calculation fails
+      try {
+        const bills = await accountingService.getUnpaidBills(member.flat_id);
+        const total = bills.reduce((sum, b) => sum + (b.total_amount || 0), 0);
+        setFlatBalance(total);
+      } catch (e) {
+        setFlatBalance(0);
+      }
     }
   };
 
@@ -509,7 +581,10 @@ const MemberRow = ({ member, onUpdate, isEven }) => {
                 return shouldShow;
               })() && (
                   <button
-                    onClick={() => setShowMoveOut(!showMoveOut)}
+                    onClick={() => {
+                      setShowMoveOut(!showMoveOut);
+                      if (!showMoveOut) loadFlatBalance();
+                    }}
                     style={{
                       padding: '6px 12px',
                       borderRadius: '6px',
@@ -524,65 +599,279 @@ const MemberRow = ({ member, onUpdate, isEven }) => {
                     🚪 Move Out
                   </button>
                 )}
-            </div>
-          )}
-        </td>
-      </tr>
-      {showMoveOut && (
-        <tr style={{ backgroundColor: '#FFF3E0' }}>
-          <td colSpan="9" style={{ padding: '16px' }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', maxWidth: '500px' }}>
-              <label style={{ fontSize: '14px', fontWeight: '600', minWidth: '120px' }}>
-                Move-Out Date (YYYY-MM-DD):
-              </label>
-              <input
-                type="text"
-                value={moveOutDate}
-                onChange={(e) => setMoveOutDate(e.target.value)}
-                placeholder="2024-01-15"
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #ddd',
-                  fontSize: '14px',
-                }}
-              />
               <button
-                onClick={handleMoveOut}
-                disabled={saving}
+                onClick={() => setShowChecklistModal(true)}
                 style={{
-                  padding: '8px 16px',
+                  padding: '6px 12px',
                   borderRadius: '6px',
-                  border: 'none',
-                  backgroundColor: '#FF9500',
-                  color: '#FFF',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: saving ? 'not-allowed' : 'pointer',
-                  opacity: saving ? 0.6 : 1,
-                }}
-              >
-                {saving ? 'Saving...' : 'Confirm'}
-              </button>
-              <button
-                onClick={() => {
-                  setShowMoveOut(false);
-                  setMoveOutDate('');
-                }}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  border: '1px solid #ddd',
+                  border: '1px solid #007AFF',
                   backgroundColor: '#FFF',
-                  color: '#666',
-                  fontSize: '14px',
+                  color: '#007AFF',
+                  fontSize: '12px',
                   fontWeight: '600',
                   cursor: 'pointer',
                 }}
               >
-                Cancel
+                📋 Docs
               </button>
+              <button
+                onClick={handleDownloadPolice}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #5856D6',
+                  backgroundColor: '#FFF',
+                  color: '#5856D6',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                👮 Police Form
+              </button>
+              <button
+                onClick={handleDownloadNDC}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #34C759',
+                  backgroundColor: '#FFF',
+                  color: '#34C759',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                📜 NDC
+              </button>
+              {isActive && (
+                <button
+                  onClick={() => setShowDamageForm(!showDamageForm)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #F57C00',
+                    backgroundColor: '#FFF',
+                    color: '#F57C00',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ➕ Charge
+                </button>
+              )}
+            </div>
+          )}
+        </td>
+      </tr>
+      {showDamageForm && !showMoveOut && (
+        <tr style={{ backgroundColor: '#FFF9C4' }}>
+          <td colSpan="9" style={{ padding: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '600px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#F57C00' }}>ADD SUPPLEMENTARY CHARGE (DAMAGES/MISC)</div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Description"
+                  value={damageDesc}
+                  onChange={(e) => setDamageDesc(e.target.value)}
+                  style={{ flex: 2, padding: '8px', fontSize: '14px', border: '1px solid #CCC', borderRadius: '4px' }}
+                />
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={damageAmount}
+                  onChange={(e) => setDamageAmount(e.target.value)}
+                  style={{ flex: 1, padding: '8px', fontSize: '14px', border: '1px solid #CCC', borderRadius: '4px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <label style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                  <input type="radio" checked={instantPost} onChange={() => setInstantPost(true)} />
+                  Post Instantly (JV Entry)
+                </label>
+                <label style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                  <input type="radio" checked={!instantPost} onChange={() => setInstantPost(false)} />
+                  Include in Next Monthly Bill
+                </label>
+                <div style={{ flex: 1 }} />
+                <button
+                  onClick={handleRaiseDamageClaim}
+                  disabled={saving}
+                  style={{ padding: '8px 20px', backgroundColor: '#F57C00', color: '#FFF', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  {saving ? 'Adding...' : 'Add Charge'}
+                </button>
+                <button
+                  onClick={() => setShowDamageForm(false)}
+                  style={{ padding: '8px 12px', backgroundColor: '#EEE', color: '#666', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+      {showChecklistModal && (
+        <DocumentChecklistModal
+          member={member}
+          onClose={() => setShowChecklistModal(false)}
+        />
+      )}
+      {showArrearsModal && (
+        <ArrearsTransferModal
+          member={member}
+          amount={flatBalance}
+          onClose={() => {
+            setShowArrearsModal(false);
+            onUpdate();
+          }}
+        />
+      )}
+      {showMoveOut && (
+        <tr style={{ backgroundColor: '#FFF3E0' }}>
+          <td colSpan="9" style={{ padding: '16px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flex: 1, minWidth: '300px' }}>
+                <label style={{ fontSize: '14px', fontWeight: '600', minWidth: '120px' }}>
+                  Move-Out Date:
+                </label>
+                <input
+                  type="date"
+                  value={moveOutDate}
+                  onChange={(e) => setMoveOutDate(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #ddd',
+                    fontSize: '14px',
+                  }}
+                />
+                <button
+                  onClick={handleMoveOut}
+                  disabled={saving}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: '#FF9500',
+                    color: '#FFF',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.6 : 1,
+                  }}
+                >
+                  {saving ? 'Saving...' : 'Confirm'}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {flatBalance > 0 && (
+                  <button
+                    onClick={() => setShowArrearsModal(true)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      border: '1px solid #E44D26',
+                      backgroundColor: '#FFF',
+                      color: '#E44D26',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ⚠️ Transfer Dispute to Arrears
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setShowMoveOut(false);
+                    setMoveOutDate('');
+                    setShowDamageForm(false);
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: '1px solid #ddd',
+                    backgroundColor: '#FFF',
+                    color: '#666',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {/* Damage Claim Section */}
+              <div style={{ width: '100%', marginTop: '12px', padding: '12px', backgroundColor: '#FFF', borderRadius: '8px', border: '1px solid #FFD54F' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#F57C00' }}>ADD DAMAGE/MISC CLAIM</div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="Description of damage/claim"
+                      value={damageDesc}
+                      onChange={(e) => setDamageDesc(e.target.value)}
+                      style={{ flex: 2, padding: '6px', fontSize: '13px', border: '1px solid #CCC', borderRadius: '4px' }}
+                    />
+                    <input
+                      type="number"
+                      placeholder="Amount"
+                      value={damageAmount}
+                      onChange={(e) => setDamageAmount(e.target.value)}
+                      style={{ flex: 1, padding: '6px', fontSize: '13px', border: '1px solid #CCC', borderRadius: '4px' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginTop: '4px' }}>
+                    <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input type="radio" checked={instantPost} onChange={() => setInstantPost(true)} />
+                      Post Instantly
+                    </label>
+                    <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <input type="radio" checked={!instantPost} onChange={() => setInstantPost(false)} />
+                      Queue for Monthly Bill
+                    </label>
+                    <div style={{ flex: 1 }} />
+                    <button
+                      onClick={handleRaiseDamageClaim}
+                      disabled={saving}
+                      style={{ padding: '6px 16px', backgroundColor: '#F57C00', color: '#FFF', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+                    >
+                      {saving ? 'Adding...' : 'Confirm Claim'}
+                    </button>
+                    {showMoveOut && (
+                      <button
+                        onClick={() => setShowDamageForm(false)}
+                        style={{ padding: '6px 12px', backgroundColor: '#EEE', color: '#666', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                      >
+                        X
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {flatBalance > 0 && (
+                <div style={{ color: '#E44D26', fontSize: '12px', width: '100%', marginTop: '8px', fontWeight: 'bold' }}>
+                  {finalBill ? (
+                    <>
+                      Outstanding: ₹{finalBill.outstanding_arrears.toLocaleString()}
+                      {finalBill.current_month_prorata > 0 && ` + Pro-rata: ₹${finalBill.current_month_prorata.toLocaleString()}`}
+                      = <b>Total: ₹{finalBill.total_payable.toLocaleString()}</b>
+                      <div style={{ fontWeight: 'normal', color: '#666', marginTop: '4px' }}>{finalBill.calculation_notes}</div>
+                    </>
+                  ) : (
+                    `Outstanding Dues: ₹${flatBalance.toLocaleString()}.`
+                  )}
+                  <br />Member status can only be set to INACTIVE if dues are paid or transferred to Personal Arrears.
+                </div>
+              )}
             </div>
           </td>
         </tr>
@@ -609,7 +898,11 @@ const AddMemberModal = ({ onClose }) => {
     member_type: 'owner',
     move_in_date: '',
     total_occupants: '1',
+    name_prefix: 'Mr.',
     occupation: '',
+    occupation_type: '',
+    employment_type: '',
+    professional_type: '',
     is_mobile_public: false,
   });
 
@@ -677,14 +970,18 @@ const AddMemberModal = ({ onClose }) => {
     try {
       const memberData = {
         flat_number: selectedFlat.flat_number,
-        name: formData.name.trim(),
+        name: `${formData.name_prefix} ${formData.name.trim()}`,
         phone_number: formData.phone_number.trim(),
         email: formData.email.trim(),
         member_type: formData.member_type,
         move_in_date: formData.move_in_date,
         total_occupants: parseInt(formData.total_occupants),
         is_primary: true,
-        occupation: formData.occupation.trim() || undefined,
+        occupation: formData.occupation_type === 'Professional'
+          ? (formData.professional_type || 'Professional')
+          : formData.occupation_type === 'Employed'
+            ? (formData.employment_type ? `Employed (${formData.employment_type})` : 'Employed')
+            : (formData.occupation_type || formData.occupation.trim() || undefined),
         is_mobile_public: formData.is_mobile_public,
       };
 
@@ -913,19 +1210,41 @@ const AddMemberModal = ({ onClose }) => {
               <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
                 Full Name *
               </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-                style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  border: '1px solid #ddd',
-                  fontSize: '14px',
-                }}
-              />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <select
+                  value={formData.name_prefix}
+                  onChange={(e) => setFormData({ ...formData, name_prefix: e.target.value })}
+                  style={{
+                    width: '80px',
+                    padding: '12px 8px',
+                    borderRadius: '8px',
+                    border: '1px solid #ddd',
+                    fontSize: '14px',
+                    backgroundColor: '#fff'
+                  }}
+                >
+                  <option value="Mr.">Mr.</option>
+                  <option value="Mrs.">Mrs.</option>
+                  <option value="Ms.">Ms.</option>
+                  <option value="Smt.">Smt.</option>
+                  <option value="Shri">Shri</option>
+                  <option value="Dr.">Dr.</option>
+                </select>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                  placeholder="Enter Full Name"
+                  style={{
+                    flex: 1,
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid #ddd',
+                    fontSize: '14px',
+                  }}
+                />
+              </div>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
@@ -997,30 +1316,103 @@ const AddMemberModal = ({ onClose }) => {
               <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
                 Occupation (Optional)
               </label>
-              <input
-                type="text"
-                value={formData.occupation}
-                onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                placeholder="e.g., Employed, Business, Professional"
-                style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  border: '1px solid #ddd',
-                  fontSize: '14px',
-                }}
-              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <select
+                  value={formData.occupation_type}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    occupation_type: e.target.value,
+                    professional_type: e.target.value === 'Professional' ? formData.professional_type : '',
+                    employment_type: e.target.value === 'Employed' ? formData.employment_type : ''
+                  })}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid #ddd',
+                    fontSize: '14px',
+                    backgroundColor: '#fff'
+                  }}
+                >
+                  <option value="">-- Select Occupation --</option>
+                  <option value="Employed">Employed</option>
+                  <option value="Business">Business</option>
+                  <option value="Professional">Professional</option>
+                  <option value="Homemaker">Homemaker</option>
+                  <option value="Retired">Retired</option>
+                  <option value="Student">Student</option>
+                  <option value="Other">Other</option>
+                </select>
+
+                {formData.occupation_type === 'Employed' && (
+                  <select
+                    value={formData.employment_type}
+                    onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      border: '1px solid #34C759', // Different highlight for employment
+                      fontSize: '14px',
+                      backgroundColor: '#F0FFF4'
+                    }}
+                  >
+                    <option value="">-- Select Employment Sector --</option>
+                    <option value="Govt.">Govt.</option>
+                    <option value="Private">Private</option>
+                  </select>
+                )}
+
+                {formData.occupation_type === 'Professional' && (
+                  <select
+                    value={formData.professional_type}
+                    onChange={(e) => setFormData({ ...formData, professional_type: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      border: '1px solid #007AFF', // Highlight the sub-selection
+                      fontSize: '14px',
+                      backgroundColor: '#F0F8FF'
+                    }}
+                  >
+                    <option value="">-- Select Profession --</option>
+                    <option value="Doctor (Dr)">Doctor (Dr)</option>
+                    <option value="Advocate (Adv)">Advocate (Adv)</option>
+                    <option value="Chartered Accountant (CA)">Chartered Accountant (CA)</option>
+                    <option value="Engineer">Engineer</option>
+                    <option value="Architect">Architect</option>
+                    <option value="Teaching">Teaching</option>
+                    <option value="Other Professional">Other Professional</option>
+                  </select>
+                )}
+
+                {(formData.occupation_type === 'Other' || (formData.occupation_type === 'Professional' && formData.professional_type === 'Other Professional')) && (
+                  <input
+                    type="text"
+                    value={formData.occupation}
+                    onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
+                    placeholder="Specify details..."
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      border: '1px solid #ddd',
+                      fontSize: '14px',
+                    }}
+                  />
+                )}
+              </div>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
-                Move-In Date * (YYYY-MM-DD)
+                Move-In Date *
               </label>
               <input
-                type="text"
+                type="date"
                 value={formData.move_in_date}
                 onChange={(e) => setFormData({ ...formData, move_in_date: e.target.value })}
-                placeholder="2024-01-15"
                 required
                 style={{
                   width: '100%',
@@ -1237,6 +1629,212 @@ const AddMemberModal = ({ onClose }) => {
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// ============ ARREARS TRANSFER MODAL ============
+const ArrearsTransferModal = ({ member, amount, onClose }) => {
+  const [saving, setSaving] = useState(false);
+  const [notes, setNotes] = useState('');
+
+  const handleTransfer = async () => {
+    if (!window.confirm(`Are you sure you want to transfer ₹${amount.toLocaleString()} to ${member.name}'s personal arrears ledger? This will clear the flat balance and allow transfer/NDC.`)) {
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await moveGovernanceService.transferToArrears({
+        member_id: parseInt(member.id),
+        flat_id: parseInt(member.flat_id),
+        amount: amount,
+        notes: notes
+      });
+      alert('Dues successfully transferred to Personal Arrears Ledger.');
+      onClose();
+    } catch (error) {
+      console.error('Error transferring to arrears:', error);
+      alert(error.response?.data?.detail || 'Failed to transfer dues');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 2000,
+    }}>
+      <div style={{
+        backgroundColor: '#FFF',
+        borderRadius: '12px',
+        padding: '24px',
+        maxWidth: '450px',
+        width: '90%',
+        boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+      }}>
+        <h3 style={{ marginTop: 0, color: '#E44D26' }}>⚠️ Dispute Isolation</h3>
+        <p style={{ fontSize: '14px', color: '#666', lineHeight: '1.5' }}>
+          Transferring <b>₹{amount.toLocaleString()}</b> from <b>Flat {member.flat_number}</b> to a
+          Personal Arrears Ledger for <b>{member.name}</b>.
+        </p>
+
+        <div style={{ marginTop: '16px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#8E8E93', textTransform: 'uppercase' }}>
+            Dispute Notes / Reason
+          </label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. Owner disputes the security deposit adjustment..."
+            style={{
+              width: '100%',
+              marginTop: '8px',
+              padding: '12px',
+              borderRadius: '8px',
+              border: '1px solid #DDD',
+              fontSize: '14px',
+              height: '80px',
+              resize: 'none'
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+          <button
+            onClick={handleTransfer}
+            disabled={saving}
+            style={{
+              flex: 1,
+              padding: '12px',
+              borderRadius: '8px',
+              backgroundColor: '#E44D26',
+              color: '#FFF',
+              border: 'none',
+              fontWeight: 'bold',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.7 : 1
+            }}
+          >
+            {saving ? 'Processing...' : 'Transfer to Arrears'}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{
+              padding: '12px 24px',
+              borderRadius: '8px',
+              backgroundColor: '#EEE',
+              color: '#666',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ DOCUMENT CHECKLIST MODAL ============
+const DocumentChecklistModal = ({ member, onClose }) => {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [checklist, setChecklist] = useState({
+    aadhaar_status: 'pending',
+    pan_card_status: 'pending',
+    sale_deed_status: 'pending',
+    rental_agreement_status: 'pending',
+    police_verification_status: 'pending',
+    notes: ''
+  });
+
+  useEffect(() => {
+    loadChecklist();
+  }, []);
+
+  const loadChecklist = async () => {
+    try {
+      const data = await memberOnboardingService.getChecklist(member.id);
+      if (data) setChecklist(data);
+    } catch (error) {
+      console.error('Error loading checklist:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await memberOnboardingService.updateChecklist(member.id, checklist);
+      alert('Document checklist updated successfully!');
+      onClose();
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to update checklist');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const StatusButton = ({ field, label, currentStatus }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '8px', backgroundColor: '#F9F9F9', borderRadius: '8px' }}>
+      <span style={{ fontSize: '14px', fontWeight: '500' }}>{label}</span>
+      <select
+        value={currentStatus}
+        onChange={(e) => setChecklist({ ...checklist, [field]: e.target.value })}
+        style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #CCC', fontSize: '13px' }}
+      >
+        <option value="pending">⏳ Pending</option>
+        <option value="submitted">✅ Submitted</option>
+        <option value="not_applicable">⚪ N/A</option>
+      </select>
+    </div>
+  );
+
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+      <div style={{ backgroundColor: '#FFF', borderRadius: '12px', padding: '24px', maxWidth: '450px', width: '90%' }}>
+        <h3 style={{ marginTop: 0 }}>Document Verification: {member.name}</h3>
+        <p style={{ fontSize: '12px', color: '#666', marginBottom: '20px' }}>Verify physical submission of original documents (Tracking only - no storage!)</p>
+
+        {loading ? <p>Loading...</p> : (
+          <>
+            <StatusButton field="aadhaar_status" label="Aadhaar Card" currentStatus={checklist.aadhaar_status} />
+            <StatusButton field="pan_card_status" label="PAN Card" currentStatus={checklist.pan_card_status} />
+            {member.member_type === 'owner' ? (
+              <StatusButton field="sale_deed_status" label="Sale Deed" currentStatus={checklist.sale_deed_status} />
+            ) : (
+              <>
+                <StatusButton field="rental_agreement_status" label="Rental Agreement" currentStatus={checklist.rental_agreement_status} />
+                <StatusButton field="police_verification_status" label="Police Verification Form" currentStatus={checklist.police_verification_status} />
+              </>
+            )}
+
+            <div style={{ marginTop: '16px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#666' }}>ADMIN NOTES</label>
+              <textarea
+                value={checklist.notes || ''}
+                onChange={(e) => setChecklist({ ...checklist, notes: e.target.value })}
+                style={{ width: '100%', marginTop: '4px', padding: '8px', borderRadius: '4px', border: '1px solid #CCC', height: '60px' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+              <button disabled={saving} onClick={handleSave} style={{ flex: 1, padding: '10px', borderRadius: '6px', backgroundColor: '#007AFF', color: '#FFF', border: 'none', fontWeight: 'bold' }}>
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button onClick={onClose} style={{ padding: '10px 20px', borderRadius: '6px', backgroundColor: '#EEE', border: 'none' }}>Cancel</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 };

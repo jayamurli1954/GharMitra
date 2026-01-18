@@ -19,7 +19,8 @@ router = APIRouter()
 
 def load_chart_of_accounts():
     """Load chart of accounts from JSON file"""
-    json_path = Path(__file__).parent.parent / 'chart_of_accounts.json'
+    # Look for chart_of_accounts.json in the backend root directory (parent of 'app')
+    json_path = Path(__file__).parent.parent.parent / 'chart_of_accounts.json'
     if json_path.exists():
         with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -73,10 +74,11 @@ CHART_OF_ACCOUNTS_FALLBACK = [
     {"code": "5030", "name": "Other Staff Salary", "type": "expense", "description": "Other staff payments"},
 
     # Utilities
-    {"code": "5100", "name": "Electricity Charges - Common Area", "type": "expense", "description": "Common area electricity"},
-    {"code": "5110", "name": "Water Charges - Tanker", "type": "expense", "description": "Water tanker charges"},
-    {"code": "5120", "name": "Water Charges - Government", "type": "expense", "description": "Municipal water charges"},
-    {"code": "5130", "name": "Generator Fuel", "type": "expense", "description": "Diesel/fuel for generator"},
+    # Utilities
+    {"code": "5100", "name": "Water Charges - Government", "type": "expense", "description": "Municipal water charges", "utility_type": "water_municipal"},
+    {"code": "5101", "name": "Water Charges - Tanker", "type": "expense", "description": "Water tanker charges", "utility_type": "water_tanker"},
+    {"code": "5102", "name": "Electricity Charges - Common Area", "type": "expense", "description": "Common area electricity"},
+    {"code": "5103", "name": "Generator Fuel", "type": "expense", "description": "Diesel/fuel for generator"},
 
     # Repairs & Maintenance
     {"code": "5200", "name": "Building Repairs", "type": "expense", "description": "Building maintenance and repairs"},
@@ -155,6 +157,8 @@ async def initialize_chart_of_accounts(
             name=account["name"],
             type=account_type,
             description=account["description"],
+            category=account.get("category"),
+            utility_type=account.get("utility_type"),
             opening_balance=0.0,
             current_balance=0.0,
             created_at=datetime.utcnow(),
@@ -200,9 +204,11 @@ async def list_account_codes(
             name=account.name,
             type=account.type.value if hasattr(account.type, 'value') else str(account.type),
             description=account.description,
+            category=account.category,
             opening_balance=account.opening_balance,
             current_balance=account.current_balance,
             is_fixed_expense=account.is_fixed_expense,
+            utility_type=account.utility_type,
             created_at=account.created_at,
             updated_at=account.updated_at
         )
@@ -238,6 +244,7 @@ async def create_account_code(
         name=account_data.name,
         type=account_data.type,
         description=account_data.description,
+        category=account_data.category,
         opening_balance=account_data.opening_balance,
         current_balance=account_data.opening_balance,
         created_at=datetime.utcnow(),
@@ -254,6 +261,7 @@ async def create_account_code(
         name=new_account.name,
         type=new_account.type.value if hasattr(new_account.type, 'value') else str(new_account.type),
         description=new_account.description,
+        category=new_account.category,
         opening_balance=new_account.opening_balance,
         current_balance=new_account.current_balance,
         is_fixed_expense=new_account.is_fixed_expense,
@@ -289,6 +297,7 @@ async def get_account_code(
         name=account.name,
         type=account.type.value if hasattr(account.type, 'value') else str(account.type),
         description=account.description,
+        category=account.category,
         opening_balance=account.opening_balance,
         current_balance=account.current_balance,
         is_fixed_expense=account.is_fixed_expense,
@@ -339,6 +348,7 @@ async def update_account_code(
         name=account.name,
         type=account.type.value if hasattr(account.type, 'value') else str(account.type),
         description=account.description,
+        category=account.category,
         opening_balance=account.opening_balance,
         current_balance=account.current_balance,
         is_fixed_expense=account.is_fixed_expense,
@@ -434,6 +444,7 @@ async def update_opening_balance(
         name=account.name,
         type=account.type.value if hasattr(account.type, 'value') else str(account.type),
         description=account.description,
+        category=account.category,
         opening_balance=account.opening_balance,
         current_balance=account.current_balance,
         is_fixed_expense=account.is_fixed_expense,
@@ -489,6 +500,7 @@ async def toggle_fixed_expense(
         name=account.name,
         type=account.type.value if hasattr(account.type, 'value') else str(account.type),
         description=account.description,
+        category=account.category,
         opening_balance=account.opening_balance,
         current_balance=account.current_balance,
         is_fixed_expense=account.is_fixed_expense,

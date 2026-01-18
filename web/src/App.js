@@ -3,7 +3,7 @@
  * Adapted from React Native App.tsx for web/desktop
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import './styles.css';
 
 // Auth Service (web-compatible)
@@ -23,6 +23,39 @@ import MessagesScreen from './screens/MessagesScreen';
 import MeetingsScreen from './screens/MeetingsScreen';
 import ReportsScreen from './screens/ReportsScreen';
 import ComplaintsScreen from './screens/ComplaintsScreen';
+import AssetRegisterScreen from './screens/AssetRegisterScreen';
+import AddAssetScreen from './screens/AddAssetScreen';
+import AssetDetailScreen from './screens/AssetDetailScreen';
+
+const MobileNav = () => {
+  const location = useLocation();
+  const isActive = (path) => location.pathname === path || (path === '/' && location.pathname === '/dashboard');
+
+  return (
+    <div className="mobile-bottom-nav">
+      <Link to="/" className={`nav-item ${isActive('/') ? 'active' : ''}`}>
+        <span className="nav-icon">🏠</span>
+        <span>Home</span>
+      </Link>
+      <Link to="/accounting" className={`nav-item ${isActive('/accounting') ? 'active' : ''}`}>
+        <span className="nav-icon">💰</span>
+        <span>Account</span>
+      </Link>
+      <Link to="/reports" className={`nav-item ${isActive('/reports') ? 'active' : ''}`}>
+        <span className="nav-icon">📊</span>
+        <span>Reports</span>
+      </Link>
+      <Link to="/members" className={`nav-item ${isActive('/members') ? 'active' : ''}`}>
+        <span className="nav-icon">👥</span>
+        <span>Members</span>
+      </Link>
+      <Link to="/settings" className={`nav-item ${isActive('/settings') ? 'active' : ''}`}>
+        <span className="nav-icon">⚙️</span>
+        <span>Setup</span>
+      </Link>
+    </div>
+  );
+};
 
 const App = () => {
   console.log('App component rendering...');
@@ -173,6 +206,7 @@ const App = () => {
       )}
 
       <Router>
+        {user && <MobileNav />}
         <Routes>
           {user ? (
             <>
@@ -186,6 +220,9 @@ const App = () => {
               <Route path="/reports" element={<ReportsScreen />} />
               <Route path="/message" element={<MessagesScreen />} />
               <Route path="/meeting" element={<MeetingsScreen />} />
+              <Route path="/assets" element={<AssetRegisterScreen />} />
+              <Route path="/assets/add" element={<AddAssetScreen />} />
+              <Route path="/assets/:asset_id" element={<AssetDetailScreen />} />
               <Route path="/settings" element={<SettingsScreen />} />
               <Route path="/profile" element={<ProfileScreen />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />

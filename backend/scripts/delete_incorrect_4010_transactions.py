@@ -1,6 +1,6 @@
 """
 Script to delete incorrect transactions in account 4010 that should not exist.
-According to CR-021_revised, all maintenance bill income should post to 4000 only, not 4010.
+According to , all maintenance bill income should post to 4000 only, not 4010.
 """
 
 import asyncio

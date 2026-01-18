@@ -9,7 +9,7 @@ def verify_month_tagging():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    print("--- Verification of CR-022: Month-Tagged Expenses ---")
+    print("--- Verification of : Month-Tagged Expenses ---")
     
     # 1. Check schema
     cursor.execute("PRAGMA table_info(transactions)")

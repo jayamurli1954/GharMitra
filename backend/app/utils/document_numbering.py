@@ -89,21 +89,55 @@ async def generate_receipt_voucher_number(
     Generate sequential voucher number for Receipt Vouchers (maintenance bill payments).
     Format: RV-0001, RV-0002, etc. (sequential across all time)
     """
-    # Find the maximum RV number for this society from Payment receipts
-    # Note: Payment.society_id is Integer, not UUID
+    # Find the maximum RV number for this society from JournalEntry (where receipts are stored)
     result = await db.execute(
-        select(Payment.receipt_number).where(
-            Payment.society_id == society_id,
-            Payment.receipt_number.like("RV-%")
-        ).order_by(Payment.receipt_number.desc())
+        select(JournalEntry.entry_number).where(
+            JournalEntry.society_id == society_id,
+            JournalEntry.entry_number.like("RV-%")
+        ).order_by(JournalEntry.entry_number.desc())
+    )
+    existing_numbers = result.scalars().all()
+
+    max_num = 0
+    for entry_num in existing_numbers:
+        if entry_num and entry_num.startswith("RV-"):
+            try:
+                num = int(entry_num[3:])  # Extract number after "RV-"
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                continue
+
+    # Next number is max_num + 1
+    next_num = max_num + 1
+    voucher_number = f"RV-{next_num:04d}"
+
+    return voucher_number
+
+
+async def generate_payment_voucher_number(
+    db: AsyncSession,
+    society_id: int
+) -> str:
+    """
+    Generate sequential voucher number for Payment Vouchers (expense payments).
+    Format: PV-0001, PV-0002, etc. (sequential across all time)
+    """
+    # Find the maximum PV number for this society
+    # We check both JournalEntry.entry_number and Transaction.document_number
+    result = await db.execute(
+        select(JournalEntry.entry_number).where(
+            JournalEntry.society_id == society_id,
+            JournalEntry.entry_number.like("PV-%")
+        ).order_by(JournalEntry.entry_number.desc())
     )
     existing_numbers = result.scalars().all()
     
     max_num = 0
-    for receipt_num in existing_numbers:
-        if receipt_num and receipt_num.startswith("RV-"):
+    for entry_num in existing_numbers:
+        if entry_num and entry_num.startswith("PV-"):
             try:
-                num = int(receipt_num[3:])  # Extract number after "RV-"
+                num = int(entry_num[3:])  # Extract number after "PV-"
                 if num > max_num:
                     max_num = num
             except ValueError:
@@ -111,7 +145,7 @@ async def generate_receipt_voucher_number(
     
     # Next number is max_num + 1
     next_num = max_num + 1
-    voucher_number = f"RV-{next_num:04d}"
+    voucher_number = f"PV-{next_num:04d}"
     
     return voucher_number
 

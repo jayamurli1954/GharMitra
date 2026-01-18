@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 
+# Trigger reload - Schema update verified
 from app.config import settings
 from app.database import init_db, close_db
 
@@ -46,6 +47,10 @@ from app.routes import (
     vendors,
     complaints,
     supplementary,
+    move_governance,
+    attachments,
+    assets,
+    database as db_mgmt,
 )
 
 # Configure logging
@@ -89,22 +94,14 @@ app = FastAPI(
 )
 
 # CORS middleware
-if settings.DEBUG:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.allowed_origins_list,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list if not settings.DEBUG else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 
 # Health check endpoint
 @app.get("/", tags=["Health"])
@@ -157,6 +154,10 @@ app.include_router(payments.router, prefix="/api", tags=["Payments"])
 app.include_router(payment_gateway.router, prefix="/api", tags=["Payment Gateway"])
 app.include_router(complaints.router, prefix="/api/complaints", tags=["Complaints"])
 app.include_router(supplementary.router, prefix="/api/maintenance/supplementary", tags=["Supplementary Billing"])
+app.include_router(move_governance.router, prefix="/api/move-governance", tags=["Move-In/Move-Out Governance"])
+app.include_router(attachments.router, prefix="/api/attachments", tags=["Voucher Attachments"])
+app.include_router(assets.router, prefix="/api/assets", tags=["Assets"])
+app.include_router(db_mgmt.router, prefix="/api/database", tags=["Database Management"])
 
 
 if __name__ == "__main__":

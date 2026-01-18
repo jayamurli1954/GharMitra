@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import settingsService from '../services/settingsService';
 import flatsService from '../services/flatsService';
 import memberOnboardingService from '../services/memberOnboardingService';
+import financialYearService from '../services/financialYearService';
 import api from '../services/api';
 
 // Helper function to safely extract error message from API errors
@@ -138,7 +139,7 @@ const SocietyProfileTab = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  
+
   // Form state
   const [formData, setFormData] = useState({
     society_name: '',
@@ -153,10 +154,15 @@ const SocietyProfileTab = () => {
     contact_email: '',
     contact_phone: '',
     bank_account_number: '',
+    bank_account_name: '',
     bank_ifsc: '',
     bank_name: '',
     financial_year_start: 'apr-mar',
+    logo_url: '',
   });
+
+  const [logoFile, setLogoFile] = useState(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -176,13 +182,15 @@ const SocietyProfileTab = () => {
           address: settings.society_address || '',
           city: settings.city || '',
           state: settings.state || '',
-          pin_code: settings.pincode || '',
-          contact_email: '', // Not in API response
-          contact_phone: '', // Not in API response
-          bank_account_number: '', // Will need to parse from bank_accounts
-          bank_ifsc: '',
-          bank_name: '',
-          financial_year_start: 'apr-mar',
+          pin_code: settings.pin_code || '',
+          contact_email: settings.contact_email || '',
+          contact_phone: settings.contact_phone || '',
+          bank_account_number: settings.bank_accounts?.[0]?.account_number || '',
+          bank_account_name: settings.bank_accounts?.[0]?.account_name || '',
+          bank_ifsc: settings.bank_accounts?.[0]?.ifsc_code || '',
+          bank_name: settings.bank_accounts?.[0]?.bank_name || '',
+          financial_year_start: settings.financial_year_start || 'apr-mar',
+          logo_url: settings.logo_url || '',
         });
       }
     } catch (error) {
@@ -193,9 +201,47 @@ const SocietyProfileTab = () => {
     }
   };
 
+  const handleLogoUpload = async () => {
+    if (!logoFile) {
+      setMessage({ type: 'error', text: 'Please select a logo file first' });
+      return;
+    }
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+    if (!allowedTypes.includes(logoFile.type)) {
+      setMessage({ type: 'error', text: 'Only PNG and JPG files are allowed' });
+      return;
+    }
+
+    if (logoFile.size > 2 * 1024 * 1024) {
+      setMessage({ type: 'error', text: 'Logo file must be less than 2MB' });
+      return;
+    }
+
+    setUploadingLogo(true);
+    setMessage({ type: 'info', text: 'Uploading logo...' });
+
+    try {
+      const result = await settingsService.uploadSocietyLogo(logoFile);
+      setMessage({ type: 'success', text: 'Logo uploaded successfully!' });
+
+      if (result.logo_url) {
+        setFormData(prev => ({ ...prev, logo_url: result.logo_url }));
+      }
+
+      setLogoFile(null);
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error('Logo upload failed:', error);
+      setMessage({ type: 'error', text: 'Upload failed: ' + (error.response?.data?.detail || error.message) });
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.society_name.trim()) {
       setMessage({ type: 'error', text: 'Society Name is required' });
       return;
@@ -212,12 +258,17 @@ const SocietyProfileTab = () => {
         city: formData.city.trim() || undefined,
         state: formData.state.trim() || undefined,
         pin_code: formData.pin_code.trim() || undefined,
+        pan_no: formData.pan.trim() || undefined,
+        contact_email: formData.contact_email.trim() || undefined,
+        contact_phone: formData.contact_phone.trim() || undefined,
         gst_number: formData.gst_number.trim() || undefined,
+        logo_url: formData.logo_url.trim() || undefined,
       };
 
       // Add bank account if provided
       if (formData.bank_account_number || formData.bank_ifsc || formData.bank_name) {
         settingsData.bank_accounts = [{
+          account_name: (formData.bank_account_name || formData.society_name).trim(),
           account_number: formData.bank_account_number.trim(),
           ifsc_code: formData.bank_ifsc.trim(),
           bank_name: formData.bank_name.trim(),
@@ -226,7 +277,7 @@ const SocietyProfileTab = () => {
 
       await settingsService.saveSocietySettings(settingsData);
       setMessage({ type: 'success', text: 'Society profile saved successfully!' });
-      
+
       // Clear message after 3 seconds
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     } catch (error) {
@@ -253,7 +304,7 @@ const SocietyProfileTab = () => {
     <div className="settings-tab-content">
       <h2 className="settings-tab-title">🏢 Society Profile</h2>
       <p className="settings-tab-description">Basic legal & identity information</p>
-      
+
       {/* Success/Error Message */}
       {message.text && (
         <div style={{
@@ -271,13 +322,13 @@ const SocietyProfileTab = () => {
           <span>{message.text}</span>
         </div>
       )}
-      
+
       <form className="settings-form" onSubmit={handleSave}>
         <div className="settings-form-group">
           <label>Society Name *</label>
-          <input 
-            type="text" 
-            placeholder="Enter society name" 
+          <input
+            type="text"
+            placeholder="Enter society name"
             value={formData.society_name}
             onChange={(e) => setFormData(prev => ({ ...prev, society_name: e.target.value }))}
             required
@@ -287,17 +338,17 @@ const SocietyProfileTab = () => {
         <div className="settings-form-row">
           <div className="settings-form-group">
             <label>Registration Number</label>
-            <input 
-              type="text" 
-              placeholder="Registration number" 
+            <input
+              type="text"
+              placeholder="Registration number"
               value={formData.registration_number}
               onChange={(e) => setFormData(prev => ({ ...prev, registration_number: e.target.value }))}
             />
           </div>
           <div className="settings-form-group">
             <label>Registration Date</label>
-            <input 
-              type="date" 
+            <input
+              type="date"
               value={formData.registration_date}
               onChange={(e) => setFormData(prev => ({ ...prev, registration_date: e.target.value }))}
             />
@@ -307,9 +358,9 @@ const SocietyProfileTab = () => {
         <div className="settings-form-row">
           <div className="settings-form-group">
             <label>PAN</label>
-            <input 
-              type="text" 
-              placeholder="PAN number" 
+            <input
+              type="text"
+              placeholder="PAN number"
               maxLength="10"
               value={formData.pan}
               onChange={(e) => setFormData(prev => ({ ...prev, pan: e.target.value.toUpperCase() }))}
@@ -317,9 +368,9 @@ const SocietyProfileTab = () => {
           </div>
           <div className="settings-form-group">
             <label>GST (if applicable)</label>
-            <input 
-              type="text" 
-              placeholder="GST number" 
+            <input
+              type="text"
+              placeholder="GST number"
               value={formData.gst_number}
               onChange={(e) => setFormData(prev => ({ ...prev, gst_number: e.target.value.toUpperCase() }))}
             />
@@ -328,8 +379,8 @@ const SocietyProfileTab = () => {
 
         <div className="settings-form-group">
           <label>Address</label>
-          <textarea 
-            rows="3" 
+          <textarea
+            rows="3"
             placeholder="Complete address"
             value={formData.address}
             onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
@@ -339,27 +390,27 @@ const SocietyProfileTab = () => {
         <div className="settings-form-row">
           <div className="settings-form-group">
             <label>City</label>
-            <input 
-              type="text" 
-              placeholder="City" 
+            <input
+              type="text"
+              placeholder="City"
               value={formData.city}
               onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
             />
           </div>
           <div className="settings-form-group">
             <label>State</label>
-            <input 
-              type="text" 
-              placeholder="State" 
+            <input
+              type="text"
+              placeholder="State"
               value={formData.state}
               onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
             />
           </div>
           <div className="settings-form-group">
             <label>PIN Code</label>
-            <input 
-              type="text" 
-              placeholder="PIN" 
+            <input
+              type="text"
+              placeholder="PIN"
               maxLength="6"
               value={formData.pin_code}
               onChange={(e) => setFormData(prev => ({ ...prev, pin_code: e.target.value }))}
@@ -370,18 +421,18 @@ const SocietyProfileTab = () => {
         <div className="settings-form-row">
           <div className="settings-form-group">
             <label>Contact Email</label>
-            <input 
-              type="email" 
-              placeholder="society@example.com" 
+            <input
+              type="email"
+              placeholder="society@example.com"
               value={formData.contact_email}
               onChange={(e) => setFormData(prev => ({ ...prev, contact_email: e.target.value }))}
             />
           </div>
           <div className="settings-form-group">
             <label>Contact Phone</label>
-            <input 
-              type="tel" 
-              placeholder="+91 9876543210" 
+            <input
+              type="tel"
+              placeholder="+91 9876543210"
               value={formData.contact_phone}
               onChange={(e) => setFormData(prev => ({ ...prev, contact_phone: e.target.value }))}
             />
@@ -390,22 +441,28 @@ const SocietyProfileTab = () => {
 
         <div className="settings-form-group">
           <label>Bank Account Details</label>
-          <div className="settings-form-row">
-            <input 
-              type="text" 
-              placeholder="Account Number" 
+          <div className="settings-form-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+            <input
+              type="text"
+              placeholder="Account Name (e.g. Society Name)"
+              value={formData.bank_account_name}
+              onChange={(e) => setFormData(prev => ({ ...prev, bank_account_name: e.target.value }))}
+            />
+            <input
+              type="text"
+              placeholder="Account Number"
               value={formData.bank_account_number}
               onChange={(e) => setFormData(prev => ({ ...prev, bank_account_number: e.target.value }))}
             />
-            <input 
-              type="text" 
-              placeholder="IFSC Code" 
+            <input
+              type="text"
+              placeholder="IFSC Code"
               value={formData.bank_ifsc}
               onChange={(e) => setFormData(prev => ({ ...prev, bank_ifsc: e.target.value.toUpperCase() }))}
             />
-            <input 
-              type="text" 
-              placeholder="Bank Name" 
+            <input
+              type="text"
+              placeholder="Bank Name"
               value={formData.bank_name}
               onChange={(e) => setFormData(prev => ({ ...prev, bank_name: e.target.value }))}
             />
@@ -414,13 +471,30 @@ const SocietyProfileTab = () => {
 
         <div className="settings-form-group">
           <label>Society Logo</label>
-          <input type="file" accept="image/*" />
-          <small>Upload society logo (PNG, JPG, max 2MB)</small>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/jpg"
+            onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+          />
+          <button
+            type="button"
+            onClick={handleLogoUpload}
+            disabled={!logoFile || uploadingLogo}
+            className="settings-action-btn"
+            style={{
+              marginTop: '10px',
+              backgroundColor: uploadingLogo ? '#ccc' : '#4CAF50',
+              cursor: uploadingLogo || !logoFile ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {uploadingLogo ? 'Uploading...' : 'Upload Logo'}
+          </button>
+          <small>Upload society logo (PNG, JPG, max 2MB). The logo will appear on receipts and reports.</small>
         </div>
 
         <div className="settings-form-group">
           <label>Financial Year Start</label>
-          <select 
+          <select
             value={formData.financial_year_start}
             onChange={(e) => setFormData(prev => ({ ...prev, financial_year_start: e.target.value }))}
           >
@@ -431,7 +505,7 @@ const SocietyProfileTab = () => {
         </div>
 
         <div className="settings-form-actions">
-          <button 
+          <button
             type="submit"
             className="settings-save-btn"
             disabled={saving}
@@ -439,7 +513,7 @@ const SocietyProfileTab = () => {
           >
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
-          <button 
+          <button
             type="button"
             className="settings-cancel-btn"
             onClick={() => loadSettings()}
@@ -462,12 +536,12 @@ const FlatsBlocksTab = () => {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [blocksConfig, setBlocksConfig] = useState([]);
   const [editingBlock, setEditingBlock] = useState(null);
-  
+
   const addDebugMessage = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     setDebugMessages(prev => [...prev.slice(-19), { timestamp, message, type }]);
   };
-  
+
   // Flat form state
   const [flatForm, setFlatForm] = useState({
     flat_number: '',
@@ -493,7 +567,7 @@ const FlatsBlocksTab = () => {
         const fFlat = (f.flat_number || f.flatNumber || '').trim().toUpperCase();
         return fFlat === 'A-304';
       });
-      
+
       console.log('🔍 A-304 Data Check:', {
         member: a304Member,
         flat: a304Flat,
@@ -580,7 +654,7 @@ const FlatsBlocksTab = () => {
       // Load flats and members separately to handle errors better
       let flatsList = [];
       let membersList = [];
-      
+
       try {
         flatsList = await flatsService.getFlats();
         const count = flatsList?.length || 0;
@@ -624,7 +698,7 @@ const FlatsBlocksTab = () => {
         console.warn(`Warning: Could not load flats. ${flatsErrorMsg}`);
         flatsList = []; // Set to empty array on error
       }
-      
+
       try {
         membersList = await memberOnboardingService.listMembers();
         console.log('✅ Members loaded:', membersList?.length || 0, 'members');
@@ -645,10 +719,10 @@ const FlatsBlocksTab = () => {
         console.warn(`Warning: Could not load members. ${membersErrorMsg}`);
         membersList = []; // Set to empty array on error
       }
-      
+
       setFlats(flatsList || []);
       setMembers(membersList || []);
-      
+
       // Debug: Log A-304 data after loading
       if (membersList && membersList.length > 0) {
         const a304Member = membersList.find(m => {
@@ -709,7 +783,7 @@ const FlatsBlocksTab = () => {
   // Auto-fill flat details when flat number changes
   const handleFlatNumberChange = (flatNumber) => {
     setFlatForm(prev => ({ ...prev, flat_number: flatNumber }));
-    
+
     if (!flatNumber.trim()) {
       // Clear form if flat number is empty
       setFlatForm({
@@ -724,19 +798,19 @@ const FlatsBlocksTab = () => {
 
     // Normalize flat number for comparison
     const normalizedFlatNumber = flatNumber.trim().toUpperCase();
-    
+
     // Find existing flat - handle both flat_number and flatNumber field names
     const existingFlat = flats.find(f => {
       const fFlatNumber = (f.flat_number || f.flatNumber || '').trim().toUpperCase();
       return fFlatNumber === normalizedFlatNumber;
     });
-    
+
     // Find existing member for this flat - use same logic as table display
     const existingMember = members.find(m => {
       const memberFlatNumber = (m.flat_number || m.flatNumber || '').trim().toUpperCase();
       const isActive = m.status === 'active';
       const hasNoMoveOut = !m.move_out_date || new Date(m.move_out_date) > new Date();
-      
+
       return memberFlatNumber === normalizedFlatNumber && isActive && hasNoMoveOut;
     });
 
@@ -750,12 +824,12 @@ const FlatsBlocksTab = () => {
       // Auto-fill form from existing data
       const trimmedFlatNumber = flatNumber.trim();
       const autoParkingSlot = generateParkingSlot(trimmedFlatNumber);
-      
+
       // Ensure area_sqft is properly loaded - use flatData.area_sqft if it exists (even if 0)
-      const loadedArea = flatData && flatData.area_sqft !== undefined && flatData.area_sqft !== null 
-        ? String(flatData.area_sqft) 
+      const loadedArea = flatData && flatData.area_sqft !== undefined && flatData.area_sqft !== null
+        ? String(flatData.area_sqft)
         : '';
-      
+
       console.log('📋 Loading flat data:', {
         flatNumber: trimmedFlatNumber,
         flatData: flatData,
@@ -763,23 +837,23 @@ const FlatsBlocksTab = () => {
         loadedArea: loadedArea
       });
       addDebugMessage(`📋 Loading flat: ${trimmedFlatNumber}, Area: ${loadedArea || 'N/A'}`, 'info');
-      
+
       setFlatForm(prev => ({
         ...prev,
         flat_number: trimmedFlatNumber,
         area_sqft: loadedArea, // Always use loaded area, even if empty
         flat_type: flatData?.bedrooms ? bedroomsToBHK(flatData.bedrooms) : '',
-        status: existingMember 
+        status: existingMember
           ? (existingMember.member_type === 'owner' ? 'Owner Occupied' : 'Tenant')
-          : (flatData?.occupancy_status === 'OWNER_OCCUPIED' ? 'Owner Occupied' : 
-             flatData?.occupancy_status === 'TENANT_OCCUPIED' ? 'Tenant' : 'Vacant'),
+          : (flatData?.occupancy_status === 'OWNER_OCCUPIED' ? 'Owner Occupied' :
+            flatData?.occupancy_status === 'TENANT_OCCUPIED' ? 'Tenant' : 'Vacant'),
         parking_slots: prev.parking_slots || autoParkingSlot, // Auto-generate if not already set
       }));
     } else {
       // Flat doesn't exist yet, keep flat number but clear other fields
       const trimmedFlatNumber = flatNumber.trim();
       const autoParkingSlot = generateParkingSlot(trimmedFlatNumber);
-      
+
       setFlatForm(prev => ({
         ...prev,
         flat_number: trimmedFlatNumber,
@@ -797,17 +871,17 @@ const FlatsBlocksTab = () => {
       e.preventDefault();
       e.stopPropagation();
     }
-    
-    console.log('🔵 handleAddFlat called', { 
-      flatForm, 
-      saving, 
+
+    console.log('🔵 handleAddFlat called', {
+      flatForm,
+      saving,
       loading,
       flatNumber: flatForm.flat_number,
       areaSqft: flatForm.area_sqft
     });
     addDebugMessage('🔵 Button clicked - handleAddFlat called', 'info');
     addDebugMessage(`Form data: Flat=${flatForm.flat_number}, Area=${flatForm.area_sqft}`, 'info');
-    
+
     if (!flatForm.flat_number.trim()) {
       addDebugMessage('❌ Validation: Please enter flat number', 'error');
       alert('Please enter flat number');
@@ -823,19 +897,19 @@ const FlatsBlocksTab = () => {
     addDebugMessage(`🔄 Starting save operation for flat: ${flatForm.flat_number.trim()}`, 'info');
     try {
       const bedrooms = bhkToBedrooms(flatForm.flat_type);
-      
+
       // Check if flat already exists
       // Handle both 'id' and '_id' field names (backend model uses alias)
       const existingFlat = flats.find(f => {
         const flatNum = f.flat_number || f.flatNumber;
         return flatNum === flatForm.flat_number.trim();
       });
-      
+
       console.log('🔍 Searching for flat:', {
         searchNumber: flatForm.flat_number.trim(),
         totalFlats: flats.length,
-        flatNumbers: flats.map(f => ({ 
-          number: f.flat_number || f.flatNumber, 
+        flatNumbers: flats.map(f => ({
+          number: f.flat_number || f.flatNumber,
           id: f.id || f._id,
           hasId: !!(f.id || f._id)
         })),
@@ -843,11 +917,11 @@ const FlatsBlocksTab = () => {
         foundFlat: existingFlat
       });
       addDebugMessage(`🔍 Searching for flat: ${flatForm.flat_number.trim()}, Found: ${existingFlat ? 'YES' : 'NO'}`, 'info');
-      
+
       if (existingFlat) {
         // Get ID - handle both 'id' and '_id' field names
         const flatId = existingFlat.id || existingFlat._id;
-        
+
         // Update existing flat
         console.log('📋 Existing flat data:', {
           id: flatId,
@@ -859,32 +933,32 @@ const FlatsBlocksTab = () => {
           allKeys: Object.keys(existingFlat)
         });
         addDebugMessage(`📋 Found flat - ID: ${flatId}, Type: ${typeof flatId}`, 'info');
-        
+
         if (!flatId && flatId !== 0 && flatId !== '0') {
           addDebugMessage(`❌ Error: Flat found but ID is missing. Flat data: ${JSON.stringify(existingFlat)}`, 'error');
           addDebugMessage(`Available keys: ${Object.keys(existingFlat).join(', ')}`, 'error');
           alert('Error: Flat ID is missing. Please refresh the page and try again.');
           return;
         }
-        
+
         const updateData = {
           area_sqft: parseFloat(flatForm.area_sqft),
         };
-        
+
         if (bedrooms) {
           updateData.bedrooms = bedrooms;
         }
-        
+
         // Use the ID we extracted (handles both 'id' and '_id')
         const flatIdToUpdate = flatId;
-        
+
         console.log('🔄 Updating flat:', {
           flatId: flatIdToUpdate,
           flatNumber: existingFlat.flat_number || existingFlat.flatNumber,
           updateData: updateData
         });
         addDebugMessage(`🔄 Updating flat ID: ${flatIdToUpdate}, Number: ${existingFlat.flat_number || existingFlat.flatNumber}`, 'info');
-        
+
         // Note: occupancy_status update might need to be done separately via member onboarding
         // For now, we'll update what we can through the flat update endpoint
         await flatsService.updateFlat(flatIdToUpdate, updateData);
@@ -899,7 +973,7 @@ const FlatsBlocksTab = () => {
           occupants: 1,
           owner_name: 'To be assigned', // Required field, will be updated when member is onboarded
         };
-        
+
         console.log('➕ Creating flat with data:', flatData);
         addDebugMessage(`➕ Creating flat: ${flatData.flat_number}`, 'info');
         const createdFlat = await flatsService.createFlat(flatData);
@@ -949,11 +1023,11 @@ const FlatsBlocksTab = () => {
     <div className="settings-tab-content">
       <h2 className="settings-tab-title">🏠 Flats & Blocks Setup</h2>
       <p className="settings-tab-description">Physical structure of the society</p>
-      
+
       <div className="settings-section">
         <h3>Blocks / Wings</h3>
         <div style={{ marginBottom: '15px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button 
+          <button
             className="settings-add-btn"
             onClick={handleAddBlock}
             disabled={saving}
@@ -961,7 +1035,7 @@ const FlatsBlocksTab = () => {
             + Add Block
           </button>
           {blocksConfig.length > 0 && (
-            <button 
+            <button
               className="settings-save-btn"
               onClick={handleSaveBlocksConfig}
               disabled={saving}
@@ -1039,7 +1113,7 @@ const FlatsBlocksTab = () => {
                       </td>
                       <td>
                         {isEditing ? (
-                          <button 
+                          <button
                             className="settings-action-btn"
                             onClick={() => handleSaveBlock(index)}
                             style={{ backgroundColor: '#34C759', color: 'white' }}
@@ -1048,13 +1122,13 @@ const FlatsBlocksTab = () => {
                           </button>
                         ) : (
                           <>
-                            <button 
+                            <button
                               className="settings-action-btn"
                               onClick={() => handleEditBlock(index)}
                             >
                               Edit
                             </button>
-                            <button 
+                            <button
                               className="settings-action-btn danger"
                               onClick={() => handleDeleteBlock(index)}
                             >
@@ -1072,7 +1146,7 @@ const FlatsBlocksTab = () => {
         </div>
         {blocksConfig.length > 0 && (
           <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '6px', fontSize: '14px', color: '#666' }}>
-            <strong>Note:</strong> After saving, flats will be automatically synced to match this configuration. 
+            <strong>Note:</strong> After saving, flats will be automatically synced to match this configuration.
             Existing flats that don't match will be removed, and missing flats will be created.
           </div>
         )}
@@ -1116,7 +1190,7 @@ const FlatsBlocksTab = () => {
             </button>
           </div>
         </div>
-        
+
         {/* Debug Panel */}
         {showDebugPanel && (
           <div style={{
@@ -1143,21 +1217,20 @@ const FlatsBlocksTab = () => {
                     marginBottom: '8px',
                     padding: '5px',
                     backgroundColor: msg.type === 'error' ? '#4a1e1e' :
-                                    msg.type === 'warning' ? '#4a3e1e' :
-                                    msg.type === 'success' ? '#1e4a1e' : '#1e1e2e',
+                      msg.type === 'warning' ? '#4a3e1e' :
+                        msg.type === 'success' ? '#1e4a1e' : '#1e1e2e',
                     borderRadius: '4px',
-                    borderLeft: `3px solid ${
-                      msg.type === 'error' ? '#ff4444' :
+                    borderLeft: `3px solid ${msg.type === 'error' ? '#ff4444' :
                       msg.type === 'warning' ? '#ffaa00' :
-                      msg.type === 'success' ? '#44ff44' : '#007AFF'
-                    }`
+                        msg.type === 'success' ? '#44ff44' : '#007AFF'
+                      }`
                   }}
                 >
                   <span style={{ color: '#888' }}>[{msg.timestamp}]</span>{' '}
                   <span style={{
                     color: msg.type === 'error' ? '#ff8888' :
-                           msg.type === 'warning' ? '#ffcc88' :
-                           msg.type === 'success' ? '#88ff88' : '#fff'
+                      msg.type === 'warning' ? '#ffcc88' :
+                        msg.type === 'success' ? '#88ff88' : '#fff'
                   }}>
                     {msg.message}
                   </span>
@@ -1189,20 +1262,20 @@ const FlatsBlocksTab = () => {
                 </span>
               )}
             </div>
-            
+
             {flats.length > 0 ? (
               <div className="settings-table-container" style={{ marginBottom: '24px' }}>
                 {/* Debug Info */}
                 {flats.some(f => (f.flat_number || f.flatNumber || '').trim().toUpperCase() === 'A-304') && (
-                  <div style={{ 
-                    padding: '10px', 
-                    marginBottom: '10px', 
-                    backgroundColor: '#FFF3CD', 
+                  <div style={{
+                    padding: '10px',
+                    marginBottom: '10px',
+                    backgroundColor: '#FFF3CD',
                     border: '1px solid #FFC107',
                     borderRadius: '4px',
                     fontSize: '12px'
                   }}>
-                    <strong>🔍 A-304 Debug:</strong> Members loaded: {members.length}, 
+                    <strong>🔍 A-304 Debug:</strong> Members loaded: {members.length},
                     A-304 Member: {members.find(m => ((m.flat_number || m.flatNumber || '').trim().toUpperCase() === 'A-304'))?.name || 'NOT FOUND'}
                     <br />
                     Check browser console (F12) for detailed logs.
@@ -1224,37 +1297,37 @@ const FlatsBlocksTab = () => {
                       const flatId = flat.id || flat._id;
                       const flatNumber = flat.flat_number || flat.flatNumber;
                       const flatArea = flat.area_sqft || flat.areaSqft;
-                      
+
                       // Find active member for this flat - use same logic as Members page
                       // Normalize flat numbers for comparison (trim whitespace, case-insensitive)
                       const normalizedFlatNumber = flatNumber ? flatNumber.trim().toUpperCase() : '';
-                      
+
                       // Find active member for this flat - try multiple matching strategies
                       let flatMember = null;
-                      
+
                       // Only try to find member if we have members loaded
                       if (members && members.length > 0) {
                         flatMember = members.find(m => {
                           // Strategy 1: Match by flat_number (normalized)
                           const memberFlatNumber = (m.flat_number || m.flatNumber || '').trim().toUpperCase();
                           const flatNumberMatch = memberFlatNumber === normalizedFlatNumber;
-                          
+
                           // Strategy 2: Match by flat_id (if available)
                           const memberFlatId = m.flat_id ? String(m.flat_id) : null;
                           const flatIdStr = flatId ? String(flatId) : null;
                           const flatIdMatch = flatIdStr && memberFlatId && memberFlatId === flatIdStr;
-                          
+
                           // Status checks - be more lenient
                           const statusLower = (m.status || '').toLowerCase();
                           const isActive = statusLower === 'active';
-                          const hasNoMoveOut = !m.move_out_date || 
-                                              m.move_out_date === null || 
-                                              m.move_out_date === '' ||
-                                              (m.move_out_date && new Date(m.move_out_date) > new Date());
-                          
+                          const hasNoMoveOut = !m.move_out_date ||
+                            m.move_out_date === null ||
+                            m.move_out_date === '' ||
+                            (m.move_out_date && new Date(m.move_out_date) > new Date());
+
                           // Match if either flat_number OR flat_id matches, and member is active
                           const matches = (flatNumberMatch || flatIdMatch) && isActive && hasNoMoveOut;
-                          
+
                           // Debug for A-304
                           if (normalizedFlatNumber === 'A-304' || flatNumber === 'A-304') {
                             console.log('🔍 A-304 Member Lookup - Checking member:', {
@@ -1273,10 +1346,10 @@ const FlatsBlocksTab = () => {
                               matches: matches
                             });
                           }
-                          
+
                           return matches;
                         });
-                        
+
                         // Debug for A-304 - final result
                         if ((normalizedFlatNumber === 'A-304' || flatNumber === 'A-304') && !flatMember) {
                           console.log('❌ A-304 NO MEMBER FOUND - All members checked:', {
@@ -1308,7 +1381,7 @@ const FlatsBlocksTab = () => {
                           console.log('⚠️ A-304: Members array is empty or not loaded yet');
                         }
                       }
-                      
+
                       // Debug for A-304 specifically (console only, no state updates during render)
                       if (normalizedFlatNumber === 'A-304') {
                         console.log('🔍 A-304 Debug:', {
@@ -1328,7 +1401,7 @@ const FlatsBlocksTab = () => {
                         // Note: Don't call addDebugMessage here - it updates state and causes infinite loop
                         // Use console.log only for debugging during render
                       }
-                      
+
                       return (
                         <tr key={flatId || flatNumber}>
                           <td><strong>{flatNumber}</strong></td>
@@ -1380,10 +1453,10 @@ const FlatsBlocksTab = () => {
                               borderRadius: '4px',
                               fontSize: '12px',
                               fontWeight: '600',
-                              backgroundColor: flatMember 
+                              backgroundColor: flatMember
                                 ? (((flatMember.member_type || flatMember.memberType || '').toLowerCase() === 'owner') ? '#E3F2FD' : '#E8F5E9')
                                 : '#F5F5F5',
-                              color: flatMember 
+                              color: flatMember
                                 ? (((flatMember.member_type || flatMember.memberType || '').toLowerCase() === 'owner') ? '#1976D2' : '#2E7D32')
                                 : '#666',
                             }}>
@@ -1404,7 +1477,7 @@ const FlatsBlocksTab = () => {
                             {normalizedFlatNumber === 'A-304' && flatMember && console.log('✅ A-304 Found:', flatMember.name)}
                           </td>
                           <td>
-                            <button 
+                            <button
                               className="settings-action-btn"
                               onClick={() => {
                                 // Auto-fill form with this flat's data
@@ -1433,7 +1506,7 @@ const FlatsBlocksTab = () => {
 
       <div className="settings-section">
         <h3>Add / Edit Flat Details</h3>
-        <form 
+        <form
           onSubmit={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1441,104 +1514,104 @@ const FlatsBlocksTab = () => {
           }}
           style={{ display: 'contents' }}
         >
-        <div className="settings-form-row">
+          <div className="settings-form-row">
+            <div className="settings-form-group">
+              <label>Flat Number *</label>
+              <input
+                type="text"
+                placeholder="A-101"
+                value={flatForm.flat_number}
+                onChange={(e) => handleFlatNumberChange(e.target.value)}
+                list="flat-numbers"
+              />
+              <datalist id="flat-numbers">
+                {flats.map(flat => (
+                  <option key={flat.id || flat._id || flat.flat_number} value={flat.flat_number || flat.flatNumber} />
+                ))}
+              </datalist>
+              <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                Start typing to see existing flats. Data will auto-fill from member records.
+              </small>
+            </div>
+            <div className="settings-form-group">
+              <label>Flat Size (Sq.ft) *</label>
+              <input
+                type="number"
+                placeholder="1200"
+                value={flatForm.area_sqft}
+                onChange={(e) => setFlatForm(prev => ({ ...prev, area_sqft: e.target.value }))}
+              />
+            </div>
+            <div className="settings-form-group">
+              <label>Flat Type</label>
+              <select
+                value={flatForm.flat_type}
+                onChange={(e) => setFlatForm(prev => ({ ...prev, flat_type: e.target.value }))}
+              >
+                <option value="">Select Type</option>
+                <option>1 BHK</option>
+                <option>2 BHK</option>
+                <option>3 BHK</option>
+                <option>4 BHK</option>
+                <option>Penthouse</option>
+              </select>
+            </div>
+            <div className="settings-form-group">
+              <label>Status</label>
+              <select
+                value={flatForm.status}
+                onChange={(e) => setFlatForm(prev => ({ ...prev, status: e.target.value }))}
+              >
+                <option>Owner Occupied</option>
+                <option>Tenant</option>
+                <option>Vacant</option>
+              </select>
+            </div>
+          </div>
           <div className="settings-form-group">
-            <label>Flat Number *</label>
-            <input 
-              type="text" 
-              placeholder="A-101" 
-              value={flatForm.flat_number}
-              onChange={(e) => handleFlatNumberChange(e.target.value)}
-              list="flat-numbers"
+            <label>Parking Slots</label>
+            <input
+              type="text"
+              placeholder="P-01, P-02"
+              value={flatForm.parking_slots}
+              onChange={(e) => setFlatForm(prev => ({ ...prev, parking_slots: e.target.value }))}
             />
-            <datalist id="flat-numbers">
-              {flats.map(flat => (
-                <option key={flat.id || flat._id || flat.flat_number} value={flat.flat_number || flat.flatNumber} />
-              ))}
-            </datalist>
-            <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-              Start typing to see existing flats. Data will auto-fill from member records.
-            </small>
           </div>
-          <div className="settings-form-group">
-            <label>Flat Size (Sq.ft) *</label>
-            <input 
-              type="number" 
-              placeholder="1200" 
-              value={flatForm.area_sqft}
-              onChange={(e) => setFlatForm(prev => ({ ...prev, area_sqft: e.target.value }))}
-            />
-          </div>
-          <div className="settings-form-group">
-            <label>Flat Type</label>
-            <select 
-              value={flatForm.flat_type}
-              onChange={(e) => setFlatForm(prev => ({ ...prev, flat_type: e.target.value }))}
+          <div style={{ marginTop: '15px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              type="submit"
+              className="settings-add-btn"
+              disabled={loading || saving}
+              style={{
+                opacity: (loading || saving) ? 0.6 : 1,
+                cursor: (loading || saving) ? 'not-allowed' : 'pointer',
+                padding: '12px 24px',
+                fontSize: '16px',
+                fontWeight: 'bold'
+              }}
             >
-              <option value="">Select Type</option>
-              <option>1 BHK</option>
-              <option>2 BHK</option>
-              <option>3 BHK</option>
-              <option>4 BHK</option>
-              <option>Penthouse</option>
-            </select>
-          </div>
-          <div className="settings-form-group">
-            <label>Status</label>
-            <select 
-              value={flatForm.status}
-              onChange={(e) => setFlatForm(prev => ({ ...prev, status: e.target.value }))}
+              {saving ? '⏳ Saving...' : `+ ${flats.find(f => f.flat_number === flatForm.flat_number.trim()) ? 'Update' : 'Add'} Flat`}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                alert('Test button works! Now try the Add Flat button.');
+                addDebugMessage('🧪 Test button clicked', 'info');
+              }}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: '#34C759',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold'
+              }}
             >
-              <option>Owner Occupied</option>
-              <option>Tenant</option>
-              <option>Vacant</option>
-            </select>
+              🧪 Test Click
+            </button>
           </div>
-        </div>
-        <div className="settings-form-group">
-          <label>Parking Slots</label>
-          <input 
-            type="text" 
-            placeholder="P-01, P-02" 
-            value={flatForm.parking_slots}
-            onChange={(e) => setFlatForm(prev => ({ ...prev, parking_slots: e.target.value }))}
-          />
-        </div>
-        <div style={{ marginTop: '15px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button 
-            type="submit"
-            className="settings-add-btn"
-            disabled={loading || saving}
-            style={{
-              opacity: (loading || saving) ? 0.6 : 1,
-              cursor: (loading || saving) ? 'not-allowed' : 'pointer',
-              padding: '12px 24px',
-              fontSize: '16px',
-              fontWeight: 'bold'
-            }}
-          >
-            {saving ? '⏳ Saving...' : `+ ${flats.find(f => f.flat_number === flatForm.flat_number.trim()) ? 'Update' : 'Add'} Flat`}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              alert('Test button works! Now try the Add Flat button.');
-              addDebugMessage('🧪 Test button clicked', 'info');
-            }}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: '#34C759',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: 'bold'
-            }}
-          >
-            🧪 Test Click
-          </button>
-        </div>
         </form>
       </div>
     </div>
@@ -1549,7 +1622,7 @@ const MemberConfigTab = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  
+
   // Form state
   const [formData, setFormData] = useState({
     max_members_per_flat: 4,
@@ -1592,7 +1665,7 @@ const MemberConfigTab = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    
+
     setSaving(true);
     setMessage({ type: '', text: '' });
 
@@ -1605,7 +1678,7 @@ const MemberConfigTab = () => {
 
       await settingsService.saveSocietySettings(settingsData);
       setMessage({ type: 'success', text: 'Member configuration saved successfully!' });
-      
+
       // Clear message after 3 seconds
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     } catch (error) {
@@ -1632,7 +1705,7 @@ const MemberConfigTab = () => {
     <div className="settings-tab-content">
       <h2 className="settings-tab-title">👥 Member Configuration</h2>
       <p className="settings-tab-description">Resident governance rules</p>
-      
+
       {/* Success/Error Message */}
       {message.text && (
         <div style={{
@@ -1650,23 +1723,23 @@ const MemberConfigTab = () => {
           <span>{message.text}</span>
         </div>
       )}
-      
+
       <form className="settings-form" onSubmit={handleSave}>
         <div className="settings-form-row">
           <div className="settings-form-group">
             <label>Allowed Family Members per Flat</label>
-            <input 
-              type="number" 
-              min="1" 
+            <input
+              type="number"
+              min="1"
               value={formData.max_members_per_flat}
               onChange={(e) => setFormData(prev => ({ ...prev, max_members_per_flat: e.target.value }))}
             />
           </div>
           <div className="settings-form-group">
             <label>Messaging Members per Flat (default)</label>
-            <input 
-              type="number" 
-              min="1" 
+            <input
+              type="number"
+              min="1"
               value={formData.messaging_members_per_flat}
               onChange={(e) => setFormData(prev => ({ ...prev, messaging_members_per_flat: e.target.value }))}
             />
@@ -1677,32 +1750,32 @@ const MemberConfigTab = () => {
           <h3>Document Requirements</h3>
           <div className="settings-checkbox-group">
             <label className="settings-checkbox">
-              <input 
-                type="checkbox" 
+              <input
+                type="checkbox"
                 checked={formData.pan_mandatory}
                 onChange={(e) => setFormData(prev => ({ ...prev, pan_mandatory: e.target.checked }))}
               />
               <span>PAN mandatory for owners</span>
             </label>
             <label className="settings-checkbox">
-              <input 
-                type="checkbox" 
+              <input
+                type="checkbox"
                 checked={formData.aadhaar_mandatory}
                 onChange={(e) => setFormData(prev => ({ ...prev, aadhaar_mandatory: e.target.checked }))}
               />
               <span>Aadhaar mandatory</span>
             </label>
             <label className="settings-checkbox">
-              <input 
-                type="checkbox" 
+              <input
+                type="checkbox"
                 checked={formData.sale_deed_required}
                 onChange={(e) => setFormData(prev => ({ ...prev, sale_deed_required: e.target.checked }))}
               />
               <span>Sale deed required for owners</span>
             </label>
             <label className="settings-checkbox">
-              <input 
-                type="checkbox" 
+              <input
+                type="checkbox"
                 checked={formData.rent_agreement_required}
                 onChange={(e) => setFormData(prev => ({ ...prev, rent_agreement_required: e.target.checked }))}
               />
@@ -1713,9 +1786,9 @@ const MemberConfigTab = () => {
 
         <div className="settings-form-group">
           <label>Tenant Validity Expiry Reminder (days before)</label>
-          <input 
-            type="number" 
-            min="1" 
+          <input
+            type="number"
+            min="1"
             value={formData.tenant_expiry_reminder_days}
             onChange={(e) => setFormData(prev => ({ ...prev, tenant_expiry_reminder_days: e.target.value }))}
           />
@@ -1723,7 +1796,7 @@ const MemberConfigTab = () => {
 
         <div className="settings-form-group">
           <label>Approval Workflow</label>
-          <select 
+          <select
             value={formData.approval_workflow}
             onChange={(e) => setFormData(prev => ({ ...prev, approval_workflow: e.target.value }))}
           >
@@ -1733,7 +1806,7 @@ const MemberConfigTab = () => {
         </div>
 
         <div className="settings-form-actions">
-          <button 
+          <button
             type="submit"
             className="settings-save-btn"
             disabled={saving}
@@ -1741,7 +1814,7 @@ const MemberConfigTab = () => {
           >
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
-          <button 
+          <button
             type="button"
             className="settings-cancel-btn"
             onClick={() => loadSettings()}
@@ -1759,7 +1832,7 @@ const BillingRulesTab = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  
+
   // Form state
   const [formData, setFormData] = useState({
     maintenance_calculation_logic: 'mixed', // 'sqft', 'fixed', 'water_based', 'mixed'
@@ -1808,7 +1881,7 @@ const BillingRulesTab = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    
+
     setSaving(true);
     setMessage({ type: '', text: '' });
 
@@ -1829,7 +1902,7 @@ const BillingRulesTab = () => {
 
       await settingsService.saveSocietySettings(settingsData);
       setMessage({ type: 'success', text: 'Billing rules saved successfully!' });
-      
+
       // Clear message after 3 seconds
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     } catch (error) {
@@ -1856,7 +1929,7 @@ const BillingRulesTab = () => {
     <div className="settings-tab-content">
       <h2 className="settings-tab-title">🧾 Billing Rules</h2>
       <p className="settings-tab-description">Configure billing and charges</p>
-      
+
       {/* Success/Error Message */}
       {message.text && (
         <div style={{
@@ -2036,7 +2109,7 @@ const LateFeeTab = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  
+
   // Form state
   const [formData, setFormData] = useState({
     bill_due_days: 5, // Due date of month
@@ -2079,7 +2152,7 @@ const LateFeeTab = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    
+
     setSaving(true);
     setMessage({ type: '', text: '' });
 
@@ -2109,7 +2182,7 @@ const LateFeeTab = () => {
 
       await settingsService.saveSocietySettings(settingsData);
       setMessage({ type: 'success', text: 'Late fee & penalties configuration saved successfully!' });
-      
+
       // Clear message after 3 seconds
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     } catch (error) {
@@ -2136,7 +2209,7 @@ const LateFeeTab = () => {
     <div className="settings-tab-content">
       <h2 className="settings-tab-title">⏳ Late Fee & Penalties</h2>
       <p className="settings-tab-description">Configure late payment charges</p>
-      
+
       {/* Success/Error Message */}
       {message.text && (
         <div style={{
@@ -2154,14 +2227,14 @@ const LateFeeTab = () => {
           <span>{message.text}</span>
         </div>
       )}
-      
+
       <form className="settings-form" onSubmit={handleSave}>
         <div className="settings-form-group">
           <label>Due Date of Every Month</label>
-          <input 
-            type="number" 
-            min="1" 
-            max="31" 
+          <input
+            type="number"
+            min="1"
+            max="31"
             value={formData.bill_due_days}
             onChange={(e) => setFormData(prev => ({ ...prev, bill_due_days: e.target.value }))}
           />
@@ -2170,9 +2243,9 @@ const LateFeeTab = () => {
 
         <div className="settings-form-group">
           <label>Grace Period (days)</label>
-          <input 
-            type="number" 
-            min="0" 
+          <input
+            type="number"
+            min="0"
             value={formData.late_payment_grace_days}
             onChange={(e) => setFormData(prev => ({ ...prev, late_payment_grace_days: e.target.value }))}
           />
@@ -2181,7 +2254,7 @@ const LateFeeTab = () => {
 
         <div className="settings-form-group">
           <label>Late Fee Type</label>
-          <select 
+          <select
             value={formData.late_payment_penalty_type}
             onChange={(e) => setFormData(prev => ({ ...prev, late_payment_penalty_type: e.target.value }))}
           >
@@ -2193,9 +2266,9 @@ const LateFeeTab = () => {
         <div className="settings-form-row">
           <div className="settings-form-group">
             <label>Late Fee Amount / Percentage</label>
-            <input 
-              type="number" 
-              placeholder={formData.late_payment_penalty_type === 'fixed' ? "500" : "5"} 
+            <input
+              type="number"
+              placeholder={formData.late_payment_penalty_type === 'fixed' ? "500" : "5"}
               step={formData.late_payment_penalty_type === 'percentage' ? "0.01" : "1"}
               value={formData.late_payment_penalty_value}
               onChange={(e) => setFormData(prev => ({ ...prev, late_payment_penalty_value: e.target.value }))}
@@ -2204,7 +2277,7 @@ const LateFeeTab = () => {
           </div>
           <div className="settings-form-group">
             <label>Late Fee Frequency</label>
-            <select 
+            <select
               value={formData.late_fee_frequency}
               onChange={(e) => setFormData(prev => ({ ...prev, late_fee_frequency: e.target.value }))}
             >
@@ -2218,8 +2291,8 @@ const LateFeeTab = () => {
 
         <div className="settings-checkbox-group">
           <label className="settings-checkbox">
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               checked={formData.interest_on_overdue}
               onChange={(e) => setFormData(prev => ({ ...prev, interest_on_overdue: e.target.checked }))}
             />
@@ -2229,10 +2302,10 @@ const LateFeeTab = () => {
 
         <div className="settings-form-group">
           <label>Interest Rate on Arrears (% per month)</label>
-          <input 
-            type="number" 
-            step="0.1" 
-            placeholder="1.5" 
+          <input
+            type="number"
+            step="0.1"
+            placeholder="1.5"
             value={formData.interest_rate}
             onChange={(e) => setFormData(prev => ({ ...prev, interest_rate: e.target.value }))}
             disabled={!formData.interest_on_overdue}
@@ -2242,9 +2315,9 @@ const LateFeeTab = () => {
 
         <div className="settings-form-group">
           <label>Maximum Penalty Cap (₹)</label>
-          <input 
-            type="number" 
-            placeholder="5000" 
+          <input
+            type="number"
+            placeholder="5000"
             value={formData.max_penalty_cap}
             onChange={(e) => setFormData(prev => ({ ...prev, max_penalty_cap: e.target.value }))}
           />
@@ -2252,7 +2325,7 @@ const LateFeeTab = () => {
         </div>
 
         <div className="settings-form-actions">
-          <button 
+          <button
             type="submit"
             className="settings-save-btn"
             disabled={saving}
@@ -2260,7 +2333,7 @@ const LateFeeTab = () => {
           >
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
-          <button 
+          <button
             type="button"
             className="settings-cancel-btn"
             onClick={() => loadSettings()}
@@ -2274,88 +2347,181 @@ const LateFeeTab = () => {
   );
 };
 
-const AccountingTab = () => (
-  <div className="settings-tab-content">
-    <h2 className="settings-tab-title">💰 Accounting Settings</h2>
-    <p className="settings-tab-description">Double-entry accounting control</p>
-    
-    <div className="settings-section">
-      <h3>Chart of Accounts</h3>
-      <button className="settings-add-btn">+ Add Account</button>
-      <div className="settings-table-container">
-        <table className="settings-table">
-          <thead>
-            <tr>
-              <th>Account Code</th>
-              <th>Account Name</th>
-              <th>Type</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>1001</td>
-              <td>Cash</td>
-              <td>Asset</td>
-              <td>
-                <button className="settings-action-btn">Edit</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+const AccountingTab = () => {
+  const [financialYears, setFinancialYears] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newYear, setNewYear] = useState({
+    year_name: '',
+    start_date: '',
+    end_date: '',
+  });
 
-    <div className="settings-section">
-      <h3>Account Categories</h3>
-      <div className="settings-form-row">
-        <div className="settings-form-group">
-          <label>Cash Accounts</label>
-          <select multiple style={{ minHeight: '100px' }}>
-            <option>Cash - Main</option>
-            <option>Cash - Petty</option>
-          </select>
-        </div>
-        <div className="settings-form-group">
-          <label>Bank Accounts</label>
-          <select multiple style={{ minHeight: '100px' }}>
-            <option>HDFC - Current</option>
-            <option>ICICI - Savings</option>
-          </select>
-        </div>
-      </div>
-    </div>
+  useEffect(() => {
+    loadFinancialYears();
+  }, []);
 
-    <div className="settings-section">
-      <h3>Financial Year</h3>
-      <div className="settings-form-row">
-        <div className="settings-form-group">
-          <label>Current Financial Year</label>
-          <input type="text" readOnly value="2024-25" />
+  const loadFinancialYears = async () => {
+    setLoading(true);
+    try {
+      const years = await financialYearService.listFinancialYears();
+      setFinancialYears(years);
+    } catch (error) {
+      console.error('Error loading financial years:', error);
+      setMessage({ type: 'error', text: 'Failed to load financial years' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateYear = async (e) => {
+    e.preventDefault();
+    if (!newYear.year_name || !newYear.start_date || !newYear.end_date) {
+      setMessage({ type: 'error', text: 'Please fill all fields' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await financialYearService.createFinancialYear(newYear);
+      setMessage({ type: 'success', text: 'Financial year created successfully!' });
+      setShowAddForm(false);
+      setNewYear({ year_name: '', start_date: '', end_date: '' });
+      loadFinancialYears();
+    } catch (error) {
+      console.error('Error creating financial year:', error);
+      const errorMsg = getErrorMessage(error);
+      setMessage({ type: 'error', text: 'Error: ' + errorMsg });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">💰 Accounting Settings</h2>
+      <p className="settings-tab-description">Financial year management & controls</p>
+
+      {message.text && (
+        <div style={{
+          padding: '12px 16px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          backgroundColor: message.type === 'success' ? '#E8F5E9' : (message.type === 'error' ? '#FFEBEE' : '#E3F2FD'),
+          color: message.type === 'success' ? '#2E7D32' : (message.type === 'error' ? '#C62828' : '#1565C0'),
+          border: `1px solid ${message.type === 'success' ? '#4CAF50' : (message.type === 'error' ? '#EF5350' : '#2196F3')}`,
+        }}>
+          {message.text}
         </div>
-        <div className="settings-form-group">
-          <label>Status</label>
-          <input type="text" readOnly value="Active" />
+      )}
+
+      <div className="settings-section">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0 }}>Financial Years</h3>
+          <button
+            className="settings-add-btn"
+            onClick={() => setShowAddForm(!showAddForm)}
+          >
+            {showAddForm ? 'Cancel' : '+ Add New Financial Year'}
+          </button>
+        </div>
+
+        {showAddForm && (
+          <form className="settings-form" onSubmit={handleCreateYear} style={{ marginBottom: '25px', padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
+            <div className="settings-form-row">
+              <div className="settings-form-group">
+                <label>Year Name (e.g. FY 2025-26)</label>
+                <input
+                  type="text"
+                  value={newYear.year_name}
+                  onChange={(e) => setNewYear({ ...newYear, year_name: e.target.value })}
+                  placeholder="FY 2025-26"
+                  required
+                />
+              </div>
+              <div className="settings-form-group">
+                <label>Start Date</label>
+                <input
+                  type="date"
+                  value={newYear.start_date}
+                  onChange={(e) => setNewYear({ ...newYear, start_date: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="settings-form-group">
+                <label>End Date</label>
+                <input
+                  type="date"
+                  value={newYear.end_date}
+                  onChange={(e) => setNewYear({ ...newYear, end_date: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+            <button type="submit" className="settings-save-btn" disabled={saving}>
+              {saving ? 'Creating...' : 'Create Financial Year'}
+            </button>
+          </form>
+        )}
+
+        <div className="settings-table-container">
+          <table className="settings-table">
+            <thead>
+              <tr>
+                <th>Year Name</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Status</th>
+                <th>Active</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan="5" style={{ textAlign: 'center' }}>Loading...</td></tr>
+              ) : financialYears.length === 0 ? (
+                <tr><td colSpan="5" style={{ textAlign: 'center' }}>No financial years found. Create one to start accounting.</td></tr>
+              ) : (
+                financialYears.map(year => (
+                  <tr key={year.id}>
+                    <td><strong>{year.year_name}</strong></td>
+                    <td>{year.start_date}</td>
+                    <td>{year.end_date}</td>
+                    <td>
+                      <span className={`settings-badge status-${year.status.toLowerCase()}`}>
+                        {year.status}
+                      </span>
+                    </td>
+                    <td>
+                      {year.is_active ? '✅ Active' : 'Inactive'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
-      <div className="settings-checkbox-group">
-        <label className="settings-checkbox">
-          <input type="checkbox" />
-          <span>Lock financial year (prevent modifications)</span>
-        </label>
+
+      <div className="settings-section">
+        <h3>Accounting Controls</h3>
+        <div className="settings-checkbox-group">
+          <label className="settings-checkbox">
+            <input type="checkbox" readOnly checked={financialYears.some(y => y.is_active && y.is_closed)} />
+            <span>Lock current financial year (prevent modifications)</span>
+          </label>
+        </div>
       </div>
-      <button className="settings-action-btn" style={{ marginTop: '10px' }}>
-        Close Financial Year
-      </button>
     </div>
-  </div>
-);
+  );
+};
 
 const PaymentGatewayTab = () => (
   <div className="settings-tab-content">
     <h2 className="settings-tab-title">💳 Payment Gateway</h2>
     <p className="settings-tab-description">Configure payment collection</p>
-    
+
     <div className="settings-form">
       <div className="settings-form-group">
         <label>Payment Gateway Provider</label>
@@ -2415,7 +2581,7 @@ const NotificationsTab = () => (
   <div className="settings-tab-content">
     <h2 className="settings-tab-title">🔔 Notifications & Communication</h2>
     <p className="settings-tab-description">Configure member engagement</p>
-    
+
     <div className="settings-section">
       <h3>SMS Provider</h3>
       <div className="settings-form">
@@ -2503,391 +2669,1164 @@ const NotificationsTab = () => (
   </div>
 );
 
-const RolesTab = () => (
-  <div className="settings-tab-content">
-    <h2 className="settings-tab-title">🔐 Roles & Permissions</h2>
-    <p className="settings-tab-description">Define access control</p>
-    
-    <div className="settings-section">
-      <h3>Role Management</h3>
-      <div className="settings-table-container">
-        <table className="settings-table">
-          <thead>
-            <tr>
-              <th>Role</th>
-              <th>Approve Members</th>
-              <th>Generate Bills</th>
-              <th>Edit Accounting</th>
-              <th>View Reports</th>
-              <th>Close Complaints</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Admin</strong></td>
-              <td>✅</td>
-              <td>✅</td>
-              <td>✅</td>
-              <td>✅</td>
-              <td>✅</td>
-            </tr>
-            <tr>
-              <td><strong>Treasurer</strong></td>
-              <td>❌</td>
-              <td>✅</td>
-              <td>✅</td>
-              <td>✅</td>
-              <td>❌</td>
-            </tr>
-            <tr>
-              <td><strong>Secretary</strong></td>
-              <td>✅</td>
-              <td>✅</td>
-              <td>❌</td>
-              <td>✅</td>
-              <td>✅</td>
-            </tr>
-            <tr>
-              <td><strong>Auditor</strong></td>
-              <td>❌</td>
-              <td>❌</td>
-              <td>❌</td>
-              <td>✅</td>
-              <td>❌</td>
-            </tr>
-            <tr>
-              <td><strong>Resident</strong></td>
-              <td>❌</td>
-              <td>❌</td>
-              <td>❌</td>
-              <td>❌</td>
-              <td>❌</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <button className="settings-action-btn" style={{ marginTop: '15px' }}>
-        Edit Permissions
-      </button>
-    </div>
+const RolesTab = () => {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [roleChanges, setRoleChanges] = useState({});
 
-    <div className="settings-section">
-      <h3>Assign Roles</h3>
-      <div className="settings-table-container">
-        <table className="settings-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>John Doe</td>
-              <td>john@example.com</td>
-              <td>
-                <select>
-                  <option>Admin</option>
-                  <option>Treasurer</option>
-                  <option>Secretary</option>
-                </select>
-              </td>
-              <td>
-                <button className="settings-action-btn">Save</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/users/');
+      setUsers(response.data);
+      // Initialize role changes state with current roles
+      const initialRoles = {};
+      response.data.forEach(user => {
+        initialRoles[user.id] = user.role;
+      });
+      setRoleChanges(initialRoles);
+    } catch (error) {
+      console.error('Error loading users:', error);
+      const errorMsg = getErrorMessage(error);
+      setMessage({ type: 'error', text: errorMsg });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRoleChange = (userId, newRole) => {
+    setRoleChanges(prev => ({
+      ...prev,
+      [userId]: newRole
+    }));
+  };
+
+  const handleSaveRole = async (userId, userName) => {
+    const newRole = roleChanges[userId];
+    const user = users.find(u => u.id === userId);
+
+    if (newRole === user.role) {
+      setMessage({ type: 'info', text: 'No changes to save' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      return;
+    }
+
+    try {
+      await api.patch(`/users/${userId}/role`, { role: newRole });
+      setMessage({ type: 'success', text: `Role updated for ${userName}` });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      // Reload users to get updated data
+      await loadUsers();
+    } catch (error) {
+      console.error('Error updating role:', error);
+      const errorMsg = getErrorMessage(error);
+      setMessage({ type: 'error', text: errorMsg });
+    }
+  };
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">🔐 Roles & Permissions</h2>
+      <p className="settings-tab-description">Define access control</p>
+
+      {message.text && (
+        <div className={`settings-message ${message.type}`}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="settings-section">
+        <h3>Role Management</h3>
+        <div className="settings-table-container">
+          <table className="settings-table">
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Approve Members</th>
+                <th>Generate Bills</th>
+                <th>Edit Accounting</th>
+                <th>View Reports</th>
+                <th>Close Complaints</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Admin</strong></td>
+                <td>✅</td>
+                <td>✅</td>
+                <td>✅</td>
+                <td>✅</td>
+                <td>✅</td>
+              </tr>
+              <tr>
+                <td><strong>Treasurer</strong></td>
+                <td>❌</td>
+                <td>✅</td>
+                <td>✅</td>
+                <td>✅</td>
+                <td>❌</td>
+              </tr>
+              <tr>
+                <td><strong>Secretary</strong></td>
+                <td>✅</td>
+                <td>✅</td>
+                <td>❌</td>
+                <td>✅</td>
+                <td>✅</td>
+              </tr>
+              <tr>
+                <td><strong>Auditor</strong></td>
+                <td>❌</td>
+                <td>❌</td>
+                <td>❌</td>
+                <td>✅</td>
+                <td>❌</td>
+              </tr>
+              <tr>
+                <td><strong>Resident</strong></td>
+                <td>❌</td>
+                <td>❌</td>
+                <td>❌</td>
+                <td>❌</td>
+                <td>❌</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <button className="settings-action-btn" style={{ marginTop: '15px' }}>
+          Edit Permissions
+        </button>
+      </div>
+
+      <div className="settings-section">
+        <h3>Assign Roles</h3>
+        {loading ? (
+          <p>Loading users...</p>
+        ) : users.length === 0 ? (
+          <p>No users found. Please add users from the Members screen first.</p>
+        ) : (
+          <div className="settings-table-container">
+            <table className="settings-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Flat Number</th>
+                  <th>Current Role</th>
+                  <th>New Role</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(user => (
+                  <tr key={user.id}>
+                    <td>{user.name}</td>
+                    <td>{user.email}</td>
+                    <td>{user.apartment_number || '-'}</td>
+                    <td><span className="settings-badge">{user.role}</span></td>
+                    <td>
+                      <select
+                        value={roleChanges[user.id] || user.role}
+                        onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                        className="settings-select"
+                      >
+                        <option value="admin">Admin</option>
+                        <option value="treasurer">Treasurer</option>
+                        <option value="secretary">Secretary</option>
+                        <option value="auditor">Auditor</option>
+                        <option value="resident">Resident</option>
+                      </select>
+                    </td>
+                    <td>
+                      <button
+                        className="settings-action-btn"
+                        onClick={() => handleSaveRole(user.id, user.name)}
+                        disabled={roleChanges[user.id] === user.role}
+                        style={{
+                          opacity: roleChanges[user.id] === user.role ? 0.5 : 1,
+                          cursor: roleChanges[user.id] === user.role ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        Save
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
-  </div>
-);
+  );
+};
 
-const ComplaintsTab = () => (
-  <div className="settings-tab-content">
-    <h2 className="settings-tab-title">🛠️ Complaints & Helpdesk</h2>
-    <p className="settings-tab-description">Configure complaint management</p>
-    
-    <div className="settings-section">
-      <h3>Complaint Categories</h3>
-      <button className="settings-add-btn">+ Add Category</button>
-      <div className="settings-form">
+const ComplaintsTab = () => {
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [categories, setCategories] = useState(['Lift', 'Water', 'Security', 'Plumbing', 'Electricity']);
+  const [newCategory, setNewCategory] = useState('');
+
+  const [formData, setFormData] = useState({
+    sla_low_priority_days: 7,
+    sla_medium_priority_days: 3,
+    sla_high_priority_hours: 24,
+    escalation_days: 5,
+    escalate_to: 'Secretary',
+    auto_close_resolved: false
+  });
+
+  useEffect(() => {
+    loadComplaintSettings();
+  }, []);
+
+  const loadComplaintSettings = async () => {
+    setLoading(true);
+    try {
+      const response = await settingsService.getSocietySettings();
+      const complaintConfig = response.complaint_config || {};
+
+      if (complaintConfig.categories) {
+        setCategories(complaintConfig.categories);
+      }
+
+      setFormData({
+        sla_low_priority_days: complaintConfig.sla_low_priority_days || 7,
+        sla_medium_priority_days: complaintConfig.sla_medium_priority_days || 3,
+        sla_high_priority_hours: complaintConfig.sla_high_priority_hours || 24,
+        escalation_days: complaintConfig.escalation_days || 5,
+        escalate_to: complaintConfig.escalate_to || 'Secretary',
+        auto_close_resolved: complaintConfig.auto_close_resolved || false
+      });
+    } catch (error) {
+      console.error('Error loading complaint settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddCategory = () => {
+    if (newCategory.trim() && !categories.includes(newCategory.trim())) {
+      setCategories([...categories, newCategory.trim()]);
+      setNewCategory('');
+    }
+  };
+
+  const handleRemoveCategory = (category) => {
+    setCategories(categories.filter(c => c !== category));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      const complaintConfig = {
+        categories: categories,
+        sla_low_priority_days: parseInt(formData.sla_low_priority_days) || 7,
+        sla_medium_priority_days: parseInt(formData.sla_medium_priority_days) || 3,
+        sla_high_priority_hours: parseInt(formData.sla_high_priority_hours) || 24,
+        escalation_days: parseInt(formData.escalation_days) || 5,
+        escalate_to: formData.escalate_to,
+        auto_close_resolved: formData.auto_close_resolved
+      };
+
+      await settingsService.saveSocietySettings({ complaint_config: complaintConfig });
+      setMessage({ type: 'success', text: 'Complaint settings saved successfully!' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error('Error saving complaint settings:', error);
+      const errorMsg = getErrorMessage(error);
+      setMessage({ type: 'error', text: errorMsg });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">🛠️ Complaints & Helpdesk</h2>
+      <p className="settings-tab-description">Configure complaint management</p>
+
+      {message.text && (
+        <div className={`settings-message ${message.type}`}>
+          {message.text}
+        </div>
+      )}
+
+      {loading ? (
+        <p>Loading settings...</p>
+      ) : (
+        <>
+          <div className="settings-section">
+            <h3>Complaint Categories</h3>
+            <div className="settings-form-row" style={{ marginBottom: '10px' }}>
+              <div className="settings-form-group" style={{ flex: 1 }}>
+                <input
+                  type="text"
+                  placeholder="Category name (e.g., Lift, Water, Security)"
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleAddCategory()}
+                />
+              </div>
+              <button className="settings-add-btn" onClick={handleAddCategory}>+ Add Category</button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '10px' }}>
+              {categories.map((category, index) => (
+                <div key={index} className="settings-badge" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }}>
+                  <span>{category}</span>
+                  <button
+                    onClick={() => handleRemoveCategory(category)}
+                    style={{ background: 'none', border: 'none', color: '#dc3545', cursor: 'pointer', fontSize: '16px', padding: '0', lineHeight: '1' }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>SLA Timelines</h3>
+            <div className="settings-form-row">
+              <div className="settings-form-group">
+                <label>Low Priority (days)</label>
+                <input
+                  type="number"
+                  value={formData.sla_low_priority_days}
+                  onChange={(e) => setFormData({ ...formData, sla_low_priority_days: e.target.value })}
+                />
+              </div>
+              <div className="settings-form-group">
+                <label>Medium Priority (days)</label>
+                <input
+                  type="number"
+                  value={formData.sla_medium_priority_days}
+                  onChange={(e) => setFormData({ ...formData, sla_medium_priority_days: e.target.value })}
+                />
+              </div>
+              <div className="settings-form-group">
+                <label>High Priority (hours)</label>
+                <input
+                  type="number"
+                  value={formData.sla_high_priority_hours}
+                  onChange={(e) => setFormData({ ...formData, sla_high_priority_hours: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>Escalation Rules</h3>
+            <div className="settings-form-group">
+              <label>Auto-escalate after (days)</label>
+              <input
+                type="number"
+                value={formData.escalation_days}
+                onChange={(e) => setFormData({ ...formData, escalation_days: e.target.value })}
+              />
+            </div>
+            <div className="settings-form-group">
+              <label>Escalate to</label>
+              <select
+                value={formData.escalate_to}
+                onChange={(e) => setFormData({ ...formData, escalate_to: e.target.value })}
+              >
+                <option>Secretary</option>
+                <option>Committee</option>
+                <option>Admin</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="settings-checkbox-group">
+            <label className="settings-checkbox">
+              <input
+                type="checkbox"
+                checked={formData.auto_close_resolved}
+                onChange={(e) => setFormData({ ...formData, auto_close_resolved: e.target.checked })}
+              />
+              <span>Auto-close resolved complaints after 7 days</span>
+            </label>
+          </div>
+
+          <div className="settings-form-actions">
+            <button
+              className="settings-save-btn"
+              onClick={handleSave}
+              disabled={saving}
+              style={{ opacity: saving ? 0.6 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+const AssetsTab = () => {
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+
+  const [assets, setAssets] = useState([]);
+  const [vendors, setVendors] = useState([]);
+
+  const [assetForm, setAssetForm] = useState({
+    name: '',
+    type: 'Lift',
+    installationDate: '',
+    warrantyExpiry: ''
+  });
+
+  const [vendorForm, setVendorForm] = useState({
+    name: '',
+    serviceType: 'Security',
+    startDate: '',
+    endDate: '',
+    reminderDays: 30
+  });
+
+  const [notifications, setNotifications] = useState({
+    sendAMCReminders: true,
+    sendExpiryAlerts: true
+  });
+
+  useEffect(() => {
+    loadAssetConfig();
+  }, []);
+
+  const loadAssetConfig = async () => {
+    setLoading(true);
+    try {
+      const settings = await settingsService.getSocietySettings();
+      if (settings && settings.asset_config) {
+        const config = settings.asset_config;
+        setAssets(config.assets || []);
+        setVendors(config.vendors || []);
+        setNotifications({
+          sendAMCReminders: config.sendAMCReminders ?? true,
+          sendExpiryAlerts: config.sendExpiryAlerts ?? true
+        });
+      }
+    } catch (error) {
+      console.error('Error loading asset config:', error);
+      setMessage({ type: 'error', text: 'Failed to load asset configuration.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddAsset = () => {
+    if (!assetForm.name.trim()) {
+      setMessage({ type: 'error', text: 'Asset Name is required' });
+      return;
+    }
+    setAssets([...assets, { ...assetForm, id: Date.now() }]);
+    setAssetForm({
+      name: '',
+      type: 'Lift',
+      installationDate: '',
+      warrantyExpiry: ''
+    });
+    setMessage({ type: 'info', text: 'Asset added to list. Click Save Changes to persist.' });
+    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+  };
+
+  const handleAddVendor = () => {
+    if (!vendorForm.name.trim()) {
+      setMessage({ type: 'error', text: 'Vendor Name is required' });
+      return;
+    }
+    setVendors([...vendors, { ...vendorForm, id: Date.now() }]);
+    setVendorForm({
+      name: '',
+      serviceType: 'Security',
+      startDate: '',
+      endDate: '',
+      reminderDays: 30
+    });
+    setMessage({ type: 'info', text: 'Vendor added to list. Click Save Changes to persist.' });
+    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+  };
+
+  const handleRemoveAsset = (id) => {
+    setAssets(assets.filter(a => a.id !== id));
+  };
+
+  const handleRemoveVendor = (id) => {
+    setVendors(vendors.filter(v => v.id !== id));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage({ type: '', text: '' });
+    try {
+      const asset_config = {
+        assets,
+        vendors,
+        ...notifications
+      };
+      await settingsService.saveSocietySettings({ asset_config });
+      setMessage({ type: 'success', text: 'Asset & Vendor settings saved successfully!' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error('Error saving asset config:', error);
+      const errorMsg = getErrorMessage(error);
+      setMessage({ type: 'error', text: errorMsg });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">🏗️ Assets & Vendor Management</h2>
+      <p className="settings-tab-description">Manage society assets and vendors</p>
+
+      {message.text && (
+        <div className={`settings-message ${message.type}`}>
+          {message.text}
+        </div>
+      )}
+
+      {loading ? (
+        <p>Loading configuration...</p>
+      ) : (
+        <>
+          <div className="settings-section">
+            <h3>Society Assets</h3>
+
+            {/* Asset List */}
+            {assets.length > 0 && (
+              <div className="settings-table-container" style={{ marginBottom: '20px' }}>
+                <table className="settings-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>Installation</th>
+                      <th>Warranty</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assets.map(asset => (
+                      <tr key={asset.id}>
+                        <td>{asset.name}</td>
+                        <td>{asset.type}</td>
+                        <td>{asset.installationDate || '-'}</td>
+                        <td>{asset.warrantyExpiry || '-'}</td>
+                        <td>
+                          <button onClick={() => handleRemoveAsset(asset.id)} style={{ background: 'none', border: 'none', color: '#dc3545', cursor: 'pointer' }}>Remove</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="settings-form">
+              <div className="settings-form-row">
+                <div className="settings-form-group">
+                  <label>Asset Name</label>
+                  <input
+                    type="text"
+                    placeholder="Lift 1, Generator, etc"
+                    value={assetForm.name}
+                    onChange={(e) => setAssetForm({ ...assetForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="settings-form-group">
+                  <label>Asset Type</label>
+                  <select
+                    value={assetForm.type}
+                    onChange={(e) => setAssetForm({ ...assetForm, type: e.target.value })}
+                  >
+                    <option>Lift</option>
+                    <option>Generator</option>
+                    <option>Water Pump</option>
+                    <option>CCTV</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+              </div>
+              <div className="settings-form-row">
+                <div className="settings-form-group">
+                  <label>Installation Date</label>
+                  <input
+                    type="date"
+                    value={assetForm.installationDate}
+                    onChange={(e) => setAssetForm({ ...assetForm, installationDate: e.target.value })}
+                  />
+                </div>
+                <div className="settings-form-group">
+                  <label>Warranty Expiry</label>
+                  <input
+                    type="date"
+                    value={assetForm.warrantyExpiry}
+                    onChange={(e) => setAssetForm({ ...assetForm, warrantyExpiry: e.target.value })}
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                className="settings-add-btn"
+                onClick={handleAddAsset}
+                style={{ width: 'fit-content' }}
+              >
+                + Add Asset to List
+              </button>
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>Vendor Management</h3>
+
+            {/* Vendor List */}
+            {vendors.length > 0 && (
+              <div className="settings-table-container" style={{ marginBottom: '20px' }}>
+                <table className="settings-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Service</th>
+                      <th>Contract End</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vendors.map(vendor => (
+                      <tr key={vendor.id}>
+                        <td>{vendor.name}</td>
+                        <td>{vendor.serviceType}</td>
+                        <td>{vendor.endDate || '-'}</td>
+                        <td>
+                          <button onClick={() => handleRemoveVendor(vendor.id)} style={{ background: 'none', border: 'none', color: '#dc3545', cursor: 'pointer' }}>Remove</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="settings-form">
+              <div className="settings-form-row">
+                <div className="settings-form-group">
+                  <label>Vendor Name</label>
+                  <input
+                    type="text"
+                    placeholder="Vendor name"
+                    value={vendorForm.name}
+                    onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="settings-form-group">
+                  <label>Service Type</label>
+                  <select
+                    value={vendorForm.serviceType}
+                    onChange={(e) => setVendorForm({ ...vendorForm, serviceType: e.target.value })}
+                  >
+                    <option>Security</option>
+                    <option>Housekeeping</option>
+                    <option>AMC</option>
+                    <option>Maintenance</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+              </div>
+              <div className="settings-form-row">
+                <div className="settings-form-group">
+                  <label>Contract Start Date</label>
+                  <input
+                    type="date"
+                    value={vendorForm.startDate}
+                    onChange={(e) => setVendorForm({ ...vendorForm, startDate: e.target.value })}
+                  />
+                </div>
+                <div className="settings-form-group">
+                  <label>Contract End Date</label>
+                  <input
+                    type="date"
+                    value={vendorForm.endDate}
+                    onChange={(e) => setVendorForm({ ...vendorForm, endDate: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="settings-form-group">
+                <label>Reminder Before Expiry (days)</label>
+                <input
+                  type="number"
+                  value={vendorForm.reminderDays}
+                  onChange={(e) => setVendorForm({ ...vendorForm, reminderDays: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+              <button
+                type="button"
+                className="settings-add-btn"
+                onClick={handleAddVendor}
+                style={{ width: 'fit-content' }}
+              >
+                + Add Vendor to List
+              </button>
+            </div>
+          </div>
+
+          <div className="settings-checkbox-group">
+            <label className="settings-checkbox">
+              <input
+                type="checkbox"
+                checked={notifications.sendAMCReminders}
+                onChange={(e) => setNotifications({ ...notifications, sendAMCReminders: e.target.checked })}
+              />
+              <span>Send AMC renewal reminders</span>
+            </label>
+            <label className="settings-checkbox">
+              <input
+                type="checkbox"
+                checked={notifications.sendExpiryAlerts}
+                onChange={(e) => setNotifications({ ...notifications, sendExpiryAlerts: e.target.checked })}
+              />
+              <span>Send contract expiry alerts</span>
+            </label>
+          </div>
+
+          <div className="settings-form-actions" style={{ marginTop: '30px', borderTop: '1px solid #eee', paddingTop: '20px' }}>
+            <button
+              className="settings-save-btn"
+              onClick={handleSave}
+              disabled={saving}
+              style={{ opacity: saving ? 0.6 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+const LegalTab = () => {
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+
+  const [legalConfig, setLegalConfig] = useState({
+    bye_laws_url: '',
+    bye_laws_filename: '',
+    agm_date: '',
+    audit_due_date: '',
+    itr_filing_due_date: '',
+    mca_filing_due_date: '',
+    send_agm_reminder: true,
+    send_audit_reminder: true,
+    send_itr_reminder: true,
+    statutory_docs: []
+  });
+
+  const [byeLawsFile, setByeLawsFile] = useState(null);
+
+  useEffect(() => {
+    loadLegalConfig();
+  }, []);
+
+  const loadLegalConfig = async () => {
+    setLoading(true);
+    try {
+      const settings = await settingsService.getSocietySettings();
+      if (settings && settings.legal_config) {
+        setLegalConfig(prev => ({
+          ...prev,
+          ...settings.legal_config
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading legal config:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewDocument = async (url) => {
+    try {
+      const response = await api.get(url, {
+        responseType: 'blob'
+      });
+      const file = new Blob([response.data], { type: response.headers['content-type'] });
+      const fileURL = URL.createObjectURL(file);
+      window.open(fileURL, '_blank');
+    } catch (error) {
+      console.error('Error viewing document:', error);
+      alert('Failed to open document. ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleByeLawsChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setByeLawsFile(e.target.files[0]);
+    }
+  };
+
+  const handleUploadByeLaws = async () => {
+    if (!byeLawsFile) {
+      setMessage({ type: 'error', text: 'Please select a file first' });
+      return;
+    }
+
+    setSaving(true);
+    setMessage({ type: 'info', text: 'Uploading Bye-laws...' });
+    try {
+      const result = await settingsService.uploadSocietyDocument(byeLawsFile, 'bye_laws');
+      setLegalConfig(prev => ({
+        ...prev,
+        bye_laws_url: result.url,
+        bye_laws_filename: result.file_name
+      }));
+      setMessage({ type: 'success', text: 'Bye-laws uploaded successfully!' });
+      setByeLawsFile(null);
+      // Automatically save the updated config
+      await settingsService.saveSocietySettings({
+        legal_config: { ...legalConfig, bye_laws_url: result.url, bye_laws_filename: result.file_name }
+      });
+    } catch (error) {
+      console.error('Upload failed:', error);
+      setMessage({ type: 'error', text: 'Upload failed: ' + (error.response?.data?.detail || error.message) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfigChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setLegalConfig(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage({ type: '', text: '' });
+    try {
+      await settingsService.saveSocietySettings({
+        legal_config: legalConfig
+      });
+      setMessage({ type: 'success', text: 'Legal & Compliance settings saved successfully!' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error('Error saving legal config:', error);
+      setMessage({ type: 'error', text: 'Save failed: ' + (error.response?.data?.detail || error.message) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="settings-loading">Loading legal settings...</div>;
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">⚖️ Legal & Compliance</h2>
+      <p className="settings-tab-description">Legal documents and compliance tracking</p>
+
+      {message.text && (
+        <div className={`settings-message ${message.type}`} style={{
+          padding: '12px',
+          marginBottom: '20px',
+          borderRadius: '8px',
+          backgroundColor: message.type === 'error' ? '#ffeeee' : message.type === 'success' ? '#eeffee' : '#eefaff',
+          color: message.type === 'error' ? '#cc0000' : message.type === 'success' ? '#008800' : '#006688',
+          border: `1px solid ${message.type === 'error' ? '#ffcccc' : message.type === 'success' ? '#ccffcc' : '#cceeff'}`
+        }}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="settings-section">
+        <h3>Bye-laws Document</h3>
         <div className="settings-form-group">
-          <input type="text" placeholder="Category name (e.g., Lift, Water, Security)" />
+          <label>Upload New Bye-laws (PDF/Doc)</label>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx"
+              onChange={handleByeLawsChange}
+              className="settings-input"
+              style={{ padding: '8px' }}
+            />
+            <button
+              className="settings-action-btn"
+              onClick={handleUploadByeLaws}
+              disabled={saving || !byeLawsFile}
+            >
+              {saving ? 'Uploading...' : 'Upload'}
+            </button>
+          </div>
+          {legalConfig.bye_laws_url && (
+            <div style={{ marginTop: '10px', padding: '10px', background: '#f9f9f9', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>📄 Current: <strong>{legalConfig.bye_laws_filename || 'Bye-laws.pdf'}</strong></span>
+              <button
+                onClick={() => handleViewDocument(legalConfig.bye_laws_url)}
+                className="settings-action-btn"
+                style={{ cursor: 'pointer', textAlign: 'center' }}
+              >
+                View Document
+              </button>
+            </div>
+          )}
         </div>
       </div>
-    </div>
 
-    <div className="settings-section">
-      <h3>SLA Timelines</h3>
-      <div className="settings-form-row">
-        <div className="settings-form-group">
-          <label>Low Priority (days)</label>
-          <input type="number" defaultValue="7" />
-        </div>
-        <div className="settings-form-group">
-          <label>Medium Priority (days)</label>
-          <input type="number" defaultValue="3" />
-        </div>
-        <div className="settings-form-group">
-          <label>High Priority (hours)</label>
-          <input type="number" defaultValue="24" />
-        </div>
-      </div>
-    </div>
-
-    <div className="settings-section">
-      <h3>Escalation Rules</h3>
-      <div className="settings-form-group">
-        <label>Auto-escalate after (days)</label>
-        <input type="number" defaultValue="5" />
-      </div>
-      <div className="settings-form-group">
-        <label>Escalate to</label>
-        <select>
-          <option>Secretary</option>
-          <option>Committee</option>
-          <option>Admin</option>
-        </select>
-      </div>
-    </div>
-
-    <div className="settings-checkbox-group">
-      <label className="settings-checkbox">
-        <input type="checkbox" />
-        <span>Auto-close resolved complaints after 7 days</span>
-      </label>
-    </div>
-
-    <div className="settings-form-actions">
-      <button className="settings-save-btn">Save Changes</button>
-    </div>
-  </div>
-);
-
-const AssetsTab = () => (
-  <div className="settings-tab-content">
-    <h2 className="settings-tab-title">🏗️ Assets & Vendor Management</h2>
-    <p className="settings-tab-description">Manage society assets and vendors</p>
-    
-    <div className="settings-section">
-      <h3>Society Assets</h3>
-      <button className="settings-add-btn">+ Add Asset</button>
-      <div className="settings-form">
+      <div className="settings-section">
+        <h3>Important Dates</h3>
         <div className="settings-form-row">
           <div className="settings-form-group">
-            <label>Asset Name</label>
-            <input type="text" placeholder="Lift 1, Generator, etc" />
+            <label>AGM Date</label>
+            <input
+              type="date"
+              name="agm_date"
+              value={legalConfig.agm_date}
+              onChange={handleConfigChange}
+              className="settings-input"
+            />
           </div>
           <div className="settings-form-group">
-            <label>Asset Type</label>
-            <select>
-              <option>Lift</option>
-              <option>Generator</option>
-              <option>Water Pump</option>
-              <option>CCTV</option>
-              <option>Other</option>
-            </select>
+            <label>Audit Due Date</label>
+            <input
+              type="date"
+              name="audit_due_date"
+              value={legalConfig.audit_due_date}
+              onChange={handleConfigChange}
+              className="settings-input"
+            />
           </div>
         </div>
         <div className="settings-form-row">
           <div className="settings-form-group">
-            <label>Installation Date</label>
-            <input type="date" />
+            <label>ITR Filing Due Date</label>
+            <input
+              type="date"
+              name="itr_filing_due_date"
+              value={legalConfig.itr_filing_due_date}
+              onChange={handleConfigChange}
+              className="settings-input"
+            />
           </div>
           <div className="settings-form-group">
-            <label>Warranty Expiry</label>
-            <input type="date" />
+            <label>MCA Filing Due Date</label>
+            <input
+              type="date"
+              name="mca_filing_due_date"
+              value={legalConfig.mca_filing_due_date}
+              onChange={handleConfigChange}
+              className="settings-input"
+            />
           </div>
         </div>
       </div>
-    </div>
 
-    <div className="settings-section">
-      <h3>Vendor Management</h3>
-      <button className="settings-add-btn">+ Add Vendor</button>
-      <div className="settings-form">
-        <div className="settings-form-row">
+      <div className="settings-section">
+        <h3>Reminders</h3>
+        <div className="settings-checkbox-group">
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              name="send_agm_reminder"
+              checked={legalConfig.send_agm_reminder}
+              onChange={handleConfigChange}
+            />
+            <span>Send AGM reminder 30 days before</span>
+          </label>
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              name="send_audit_reminder"
+              checked={legalConfig.send_audit_reminder}
+              onChange={handleConfigChange}
+            />
+            <span>Send audit due reminder 15 days before</span>
+          </label>
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              name="send_itr_reminder"
+              checked={legalConfig.send_itr_reminder}
+              onChange={handleConfigChange}
+            />
+            <span>Send ITR filing reminder</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="settings-form-actions">
+        <button
+          className="settings-save-btn"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? 'Saving...' : 'Save Legal Settings'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const DataSecurityTab = () => {
+  const [backups, setBackups] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+
+  const fetchBackups = async () => {
+    try {
+      const response = await api.get('/database/backups');
+      setBackups(response.data);
+    } catch (error) {
+      console.error('Failed to fetch backups:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchBackups();
+  }, []);
+
+  const handleBackupNow = async () => {
+    setLoading(true);
+    setMessage({ type: 'info', text: 'Creating backup...' });
+    try {
+      await api.post('/database/backup');
+      setMessage({ type: 'success', text: 'Backup created successfully!' });
+      fetchBackups();
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Backup failed: ' + (error.response?.data?.detail || error.message) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestore = async (filename) => {
+    if (!window.confirm(`Are you sure you want to restore ${filename}? This will overwrite current data and require a server restart.`)) {
+      return;
+    }
+
+    setLoading(true);
+    setMessage({ type: 'info', text: 'Restoring backup...' });
+    try {
+      const response = await api.post(`/database/restore?filename=${filename}`);
+      setMessage({ type: 'success', text: response.data.message });
+      alert(response.data.message);
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Restore failed: ' + (error.response?.data?.detail || error.message) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">🔒 Data & Security</h2>
+      <p className="settings-tab-description">Database management and protection tools</p>
+
+      {message.text && (
+        <div className={`settings-message ${message.type}`} style={{
+          padding: '10px',
+          marginBottom: '20px',
+          borderRadius: '4px',
+          backgroundColor: message.type === 'error' ? '#ffeeee' : message.type === 'success' ? '#eeffee' : '#eefaff',
+          color: message.type === 'error' ? '#cc0000' : message.type === 'success' ? '#008800' : '#006688',
+          border: `1px solid ${message.type === 'error' ? '#ffcccc' : message.type === 'success' ? '#ccffcc' : '#cceeff'}`
+        }}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="settings-section">
+        <h3>Manual Backup</h3>
+        <p>Trigger a safe copy of the current database. Use this before performing major operations.</p>
+        <button
+          className="settings-action-btn"
+          onClick={handleBackupNow}
+          disabled={loading}
+          style={{ width: 'auto', padding: '10px 20px' }}
+        >
+          {loading ? 'Processing...' : '📦 Backup Now'}
+        </button>
+      </div>
+
+      <div className="settings-section" style={{ marginTop: '30px' }}>
+        <h3>System Backups</h3>
+        <p>List of automated and manual backups (last 5 kept). Restoring will overwrite current data.</p>
+        <div className="settings-table-container">
+          <table className="settings-table">
+            <thead>
+              <tr>
+                <th>Date & Time</th>
+                <th>File Name</th>
+                <th>Size</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {backups.length > 0 ? (
+                backups.map((b, idx) => (
+                  <tr key={idx}>
+                    <td>{new Date(b.created_at).toLocaleString()}</td>
+                    <td style={{ fontSize: '11px', fontFamily: 'monospace', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.filename}</td>
+                    <td>{b.size_kb} KB</td>
+                    <td>
+                      <button
+                        className="settings-action-btn"
+                        onClick={() => handleRestore(b.filename)}
+                        disabled={loading}
+                        style={{ fontSize: '12px', padding: '4px 8px' }}
+                      >
+                        Restore
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '20px' }}>No backups found</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="settings-section" style={{ marginTop: '30px' }}>
+        <h3>Data Integrity Status</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           <div className="settings-form-group">
-            <label>Vendor Name</label>
-            <input type="text" placeholder="Vendor name" />
+            <label>Journal Mode</label>
+            <input type="text" readOnly value="WAL (Resilient)" style={{ backgroundColor: '#f9f9f9' }} />
           </div>
           <div className="settings-form-group">
-            <label>Service Type</label>
-            <select>
-              <option>Security</option>
-              <option>Housekeeping</option>
-              <option>AMC</option>
-              <option>Maintenance</option>
-              <option>Other</option>
-            </select>
+            <label>Automated Protection</label>
+            <input type="text" readOnly value="Enabled (on startup & logout)" style={{ backgroundColor: '#f9f9f9' }} />
           </div>
         </div>
-        <div className="settings-form-row">
-          <div className="settings-form-group">
-            <label>Contract Start Date</label>
-            <input type="date" />
-          </div>
-          <div className="settings-form-group">
-            <label>Contract End Date</label>
-            <input type="date" />
-          </div>
-        </div>
-        <div className="settings-form-group">
-          <label>Reminder Before Expiry (days)</label>
-          <input type="number" defaultValue="30" />
-        </div>
       </div>
     </div>
-
-    <div className="settings-checkbox-group">
-      <label className="settings-checkbox">
-        <input type="checkbox" defaultChecked />
-        <span>Send AMC renewal reminders</span>
-      </label>
-      <label className="settings-checkbox">
-        <input type="checkbox" defaultChecked />
-        <span>Send contract expiry alerts</span>
-      </label>
-    </div>
-  </div>
-);
-
-const LegalTab = () => (
-  <div className="settings-tab-content">
-    <h2 className="settings-tab-title">⚖️ Legal & Compliance</h2>
-    <p className="settings-tab-description">Legal documents and compliance tracking</p>
-    
-    <div className="settings-section">
-      <h3>Documents</h3>
-      <div className="settings-form-group">
-        <label>Bye-laws Document</label>
-        <input type="file" accept=".pdf,.doc,.docx" />
-        <button className="settings-action-btn">Upload</button>
-      </div>
-    </div>
-
-    <div className="settings-section">
-      <h3>Important Dates</h3>
-      <div className="settings-form-row">
-        <div className="settings-form-group">
-          <label>AGM Date</label>
-          <input type="date" />
-        </div>
-        <div className="settings-form-group">
-          <label>Audit Due Date</label>
-          <input type="date" />
-        </div>
-      </div>
-      <div className="settings-form-row">
-        <div className="settings-form-group">
-          <label>ITR Filing Due Date</label>
-          <input type="date" />
-        </div>
-        <div className="settings-form-group">
-          <label>MCA Filing Due Date</label>
-          <input type="date" />
-        </div>
-      </div>
-    </div>
-
-    <div className="settings-section">
-      <h3>Reminders</h3>
-      <div className="settings-checkbox-group">
-        <label className="settings-checkbox">
-          <input type="checkbox" defaultChecked />
-          <span>Send AGM reminder 30 days before</span>
-        </label>
-        <label className="settings-checkbox">
-          <input type="checkbox" defaultChecked />
-          <span>Send audit due reminder 15 days before</span>
-        </label>
-        <label className="settings-checkbox">
-          <input type="checkbox" defaultChecked />
-          <span>Send ITR filing reminder</span>
-        </label>
-      </div>
-    </div>
-
-    <div className="settings-section">
-      <h3>Statutory Document Storage</h3>
-      <div className="settings-form-group">
-        <label>Upload Documents</label>
-        <input type="file" multiple accept=".pdf,.doc,.docx,.jpg,.png" />
-        <small>Upload registration, compliance, and other statutory documents</small>
-      </div>
-    </div>
-  </div>
-);
-
-const DataSecurityTab = () => (
-  <div className="settings-tab-content">
-    <h2 className="settings-tab-title">🔒 Data & Security</h2>
-    <p className="settings-tab-description">Data management and security settings</p>
-    
-    <div className="settings-section">
-      <h3>Backup Settings</h3>
-      <div className="settings-form-group">
-        <label>Backup Schedule</label>
-        <select>
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
-          <option value="manual">Manual Only</option>
-        </select>
-      </div>
-      <div className="settings-form-group">
-        <label>Last Backup</label>
-        <input type="text" readOnly value="2026-01-06 10:30 AM" />
-        <button className="settings-action-btn">Backup Now</button>
-      </div>
-    </div>
-
-    <div className="settings-section">
-      <h3>Data Export</h3>
-      <div className="settings-form-row">
-        <button className="settings-action-btn">Export to Excel</button>
-        <button className="settings-action-btn">Export to PDF</button>
-        <button className="settings-action-btn">Export All Data</button>
-      </div>
-    </div>
-
-    <div className="settings-section">
-      <h3>Audit Trail</h3>
-      <div className="settings-checkbox-group">
-        <label className="settings-checkbox">
-          <input type="checkbox" defaultChecked />
-          <span>Enable audit trail logging</span>
-        </label>
-      </div>
-      <div className="settings-form-group">
-        <label>Log Retention Period (days)</label>
-        <input type="number" defaultValue="365" />
-      </div>
-      <button className="settings-action-btn">View Audit Logs</button>
-    </div>
-
-    <div className="settings-section">
-      <h3>Account Management</h3>
-      <div className="settings-form-group">
-        <label>Account Status</label>
-        <input type="text" readOnly value="Active" />
-      </div>
-      <button className="settings-action-btn danger">Freeze Account</button>
-      <button className="settings-action-btn danger" style={{ marginLeft: '10px' }}>
-        Year Close Lock
-      </button>
-    </div>
-  </div>
-);
+  );
+};
 
 const MultiSocietyTab = () => (
   <div className="settings-tab-content">
     <h2 className="settings-tab-title">🌐 Multi-Society Mode</h2>
     <p className="settings-tab-description">Manage multiple societies (SaaS mode)</p>
-    
+
     <div className="settings-section">
       <h3>Current Society</h3>
       <div className="settings-form-group">

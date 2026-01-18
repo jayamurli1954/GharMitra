@@ -1,0 +1,25 @@
+FINANCIAL YEARS:
+ID=1, Start=2025-04-01, End=2026-03-31, Active=True
+ID=2, Start=2025-04-01, End=2026-03-31, Active=False
+ID=3, Start=2025-04-01, End=2026-03-31, Active=False
+ID=4, Start=2025-04-01, End=2026-03-31, Active=False
+
+SOCIETIES:
+ID: 1, Name: GharMitra Demo Society
+
+TRANSACTION DATE RANGE: 2026-01-01 to 2026-01-12
+TRANSACTION COUNT: 55
+ACCOUNT CODE COUNT: 69
+
+FIRST 5 TRANSACTIONS:
+ID=1, Soc=1, Date=2026-01-04, Code='1001', D=100000.00, C=0.00
+ID=2, Soc=1, Date=2026-01-04, Code='3010', D=0.00, C=100000.00
+ID=3, Soc=1, Date=2026-01-04, Code='1010', D=5000.00, C=0.00
+ID=4, Soc=1, Date=2026-01-04, Code='3020', D=0.00, C=5000.00
+ID=5, Soc=1, Date=2026-01-04, Code='5110', D=33750.00, C=0.00
+
+SPECIFIC ACCOUNTS:
+Soc=1, Code='1000', Name='Bank Account - Main', Type=AccountType.ASSET, Bal=2000.00
+Soc=1, Code='1001', Name='HDFC Bank - Main Account', Type=AccountType.ASSET, Bal=152338.00
+Soc=1, Code='1100', Name='Maintenance Dues Receivable', Type=AccountType.ASSET, Bal=53260.00
+Soc=1, Code='4000', Name='Maintenance Charges', Type=AccountType.INCOME, Bal=-71348.00

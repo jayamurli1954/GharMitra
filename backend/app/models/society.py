@@ -54,6 +54,8 @@ class SocietyResponse(BaseModel):
     mobile: Optional[str] = None
     # GST registration
     gst_registration_applicable: bool = False
+    # Legal & Bye-laws (from SocietySettings if joined)
+    legal_config: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

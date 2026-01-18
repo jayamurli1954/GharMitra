@@ -71,6 +71,14 @@ export const accountingService = {
   async validateBalanceSheet() {
     const response = await api.get(`${BASE_URL}/validate-balance-sheet`);
     return response.data;
+  },
+
+  /**
+   * Delete all account codes (admin only)
+   */
+  async deleteAccounts() {
+    const response = await api.delete(`${BASE_URL}/accounts`);
+    return response.data;
   }
 };
 

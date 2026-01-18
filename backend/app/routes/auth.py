@@ -237,6 +237,8 @@ async def update_profile(
         db_user.name = update_data.name
     if update_data.phone_number is not None:
         db_user.phone_number = update_data.phone_number
+    if update_data.apartment_number:
+        db_user.apartment_number = update_data.apartment_number
         
     # Handle Password Change
     if update_data.new_password:
@@ -272,3 +274,36 @@ async def update_profile(
     )
     
     return response_data
+
+@router.post("/reset-password")
+async def reset_password(
+    data: dict,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Reset user password
+    """
+    current_password = data.get("current_password")
+    new_password = data.get("new_password")
+    
+    if not current_password or not new_password:
+        raise HTTPException(status_code=400, detail="Current and new password are required")
+        
+    # Get DB user instance
+    result = await db.execute(select(User).where(User.id == int(current_user.id)))
+    db_user = result.scalar_one_or_none()
+    
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    # Verify current password
+    if not verify_password(current_password, db_user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+        
+    # Hash and save new password
+    db_user.password_hash = get_password_hash(new_password)
+    db_user.updated_at = datetime.utcnow()
+    
+    await db.commit()
+    return {"message": "Password updated successfully"}

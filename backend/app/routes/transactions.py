@@ -7,14 +7,43 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete, and_
 
 from app.database import get_db
-from app.models.transaction import TransactionCreate, TransactionUpdate, TransactionResponse
+from app.models.transaction import (
+    TransactionCreate, 
+    TransactionUpdate, 
+    TransactionResponse,
+    ReceiptCreate,
+    PaymentCreate
+)
 from app.models.user import UserResponse
-from app.models_db import Transaction, AccountCode, SocietySettings, JournalEntry
+from app.models_db import (
+    Transaction, 
+    AccountCode, 
+    SocietySettings, 
+    JournalEntry, 
+    Society, 
+    VoucherType, 
+    TransactionType,
+    MaintenanceBill,
+    Payment,
+    BillStatus,
+    PaymentMode,
+    PaymentStatus,
+    Member,
+    Flat
+)
 from app.dependencies import get_current_user, get_current_admin_user
 from app.utils.audit import log_action
-from app.utils.document_numbering import generate_transaction_document_number, generate_journal_entry_number
+import html
+from app.utils.document_numbering import (
+    generate_transaction_document_number, 
+    generate_journal_entry_number,
+    generate_receipt_voucher_number,
+    generate_payment_voucher_number
+)
 from app.utils.permissions import check_permission
 from fastapi import Request
+from fastapi.responses import StreamingResponse
+from app.utils.export_utils import PDFExporter
 
 router = APIRouter()
 
@@ -1011,6 +1040,7 @@ async def list_categories(
 @router.post("/{txn_id}/reverse")
 async def reverse_transaction(
     txn_id: int,
+    reason: Optional[str] = Query(None, description="Reason for reversal"),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -1034,6 +1064,7 @@ async def reverse_transaction(
         from app.routes.journal import reverse_journal_entry
         return await reverse_journal_entry(
             entry_id=transaction.journal_entry_id,
+            reason=reason,
             current_user=current_user,
             db=db
         )
@@ -1045,3 +1076,413 @@ async def reverse_transaction(
             status_code=400, 
             detail="This transaction is old and not linked to a journal group. Please use Journal Voucher for manual reversal."
         )
+@router.get("/vouchers/{journal_entry_id}/pdf")
+async def get_voucher_pdf(
+    journal_entry_id: int,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Generate professional PDF for any voucher/journal entry"""
+    from sqlalchemy.orm import selectinload
+    
+    # 1. Fetch Journal Entry with all transactions
+    result = await db.execute(
+        select(JournalEntry).where(
+            JournalEntry.id == journal_entry_id,
+            JournalEntry.society_id == current_user.society_id
+        ).options(selectinload(JournalEntry.entries))
+    )
+    jv = result.scalar_one_or_none()
+    
+    if not jv:
+        raise HTTPException(status_code=404, detail="Journal Entry not found")
+        
+    # 2. Get Society Info
+    result = await db.execute(select(Society).where(Society.id == current_user.society_id))
+    society = result.scalar_one_or_none()
+    
+    # 3. Get Flat/Member info if available
+    flat_id = None
+    for entry in jv.entries:
+        if entry.flat_id:
+            flat_id = entry.flat_id
+            break
+            
+    member_name = jv.received_from if jv.received_from else "Walk-in Member / General"
+    flat_number = "N/A"
+    
+    if flat_id:
+        # Get Flat
+        flat_result = await db.execute(select(Flat).where(Flat.id == flat_id))
+        flat_obj = flat_result.scalar_one_or_none()
+        if flat_obj:
+            flat_number = flat_obj.flat_number
+            # Get Primary Member name only if jv.received_from is NOT set
+            if not jv.received_from:
+                member_result = await db.execute(
+                    select(Member).where(
+                        Member.flat_id == flat_id,
+                        Member.society_id == current_user.society_id,
+                        Member.is_primary == True
+                    )
+                )
+                member_obj = member_result.scalar_one_or_none()
+                if member_obj:
+                    member_name = member_obj.name
+                
+    # 4. Prepare data for PDF
+    from app.utils.number_to_words import number_to_words
+    
+    entries_data = []
+    for entry in jv.entries:
+        # Get account name
+        acct_result = await db.execute(
+            select(AccountCode).where(
+                AccountCode.code == entry.account_code,
+                AccountCode.society_id == current_user.society_id
+            )
+        )
+        acct = acct_result.scalar_one_or_none()
+        entries_data.append({
+            "account_code": entry.account_code,
+            "account_name": html.escape(acct.name) if acct else "Unknown Account",
+            "debit": float(entry.debit_amount),
+            "credit": float(entry.credit_amount)
+        })
+        
+    voucher_data = {
+        "voucher_number": jv.entry_number,
+        "date": jv.date.strftime("%d %b %Y"),
+        "voucher_type": jv.voucher_type.value if jv.voucher_type else "Journal",
+        "description": html.escape(jv.description),
+        "total_debit": float(jv.total_debit or 0),
+        "total_credit": float(jv.total_credit or 0),
+        "entries": entries_data,
+        "reference": html.escape(jv.entries[0].document_number) if jv.entries and jv.entries[0].document_number else "N/A",
+        "member_name": html.escape(member_name),
+        "flat_number": html.escape(flat_number),
+        "amount_in_words": number_to_words(float(jv.total_debit or 0))
+    }
+    
+    society_info = {
+        "name": html.escape(society.name) if society else "Our Society",
+        "address": html.escape(society.address) if society and society.address else "",
+        "email": html.escape(society.email) if society and society.email else "",
+        "pan_no": html.escape(society.pan_no) if society and society.pan_no else "",
+        "bank_name": html.escape(society.bank_name) if society and society.bank_name else "",
+        "bank_account_number": html.escape(society.bank_account_number) if society and society.bank_account_number else "",
+        "bank_ifsc_code": html.escape(society.bank_ifsc_code) if society and society.bank_ifsc_code else "",
+        "logo_url": society.logo_url if society else ""
+    }
+    
+    # 5. Generate PDF using the utility function
+    try:
+        pdf_buffer = PDFExporter.create_voucher_pdf(voucher_data, society_info)
+    except Exception as e:
+        import traceback
+        with open("pdf_error.log", "a") as f:
+            f.write(f"\n--- PDF Error at {datetime.now()} ---\n")
+            f.write(f"Voucher: {jv.entry_number}\n")
+            f.write(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"PDF Generation Error: {str(e)}")
+    
+    filename = f"Voucher_{jv.entry_number}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.post("/receipts", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
+async def create_receipt(
+    data: ReceiptCreate,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a Receipt Voucher (Income)"""
+    # 1. Parse date
+    try:
+        txn_date = datetime.strptime(data.date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    # 2. Generate RV Number
+    rv_number = await generate_receipt_voucher_number(db, current_user.society_id)
+    
+    # 3. Get Accounts
+    result = await db.execute(select(AccountCode).where(AccountCode.code == data.account_code, AccountCode.society_id == current_user.society_id))
+    income_acct = result.scalar_one_or_none()
+    
+    source_code = data.bank_account_code if data.payment_method == 'bank' else '1010'
+    if data.payment_method == 'bank' and not data.bank_account_code:
+        source_code = await get_bank_account_code_from_settings(current_user.society_id, db)
+        
+    result = await db.execute(select(AccountCode).where(AccountCode.code == source_code, AccountCode.society_id == current_user.society_id))
+    asset_acct = result.scalar_one_or_none()
+    
+    if not income_acct or not asset_acct:
+        raise HTTPException(status_code=400, detail="Invalid account codes")
+
+    # 4. Create Journal Entry
+    full_description = f"{data.description} (Ref: {data.reference})" if data.reference else data.description
+    jv = JournalEntry(
+        society_id=current_user.society_id,
+        entry_number=rv_number,
+        date=txn_date,
+        description=full_description,
+        received_from=data.received_from,
+        voucher_type=VoucherType.RECEIPT,
+        total_debit=Decimal(str(data.amount)),
+        total_credit=Decimal(str(data.amount)),
+        is_balanced=True,
+        expense_month=data.expense_month if data.expense_month else txn_date.strftime("%B, %Y"),
+        added_by=int(current_user.id)
+    )
+    db.add(jv)
+    await db.flush()
+
+    # 5. Create Transactions
+    # Debit Bank/Cash (Asset increases)
+    t1 = Transaction(
+        society_id=current_user.society_id,
+        type=TransactionType.INCOME,
+        category="Receipt",
+        account_code=asset_acct.code,
+        amount=data.amount,
+        debit_amount=data.amount,
+        credit_amount=0,
+        quantity=data.quantity,
+        unit_price=data.unit_price,
+        description=full_description,
+        date=txn_date,
+        journal_entry_id=jv.id,
+        payment_method=data.payment_method,
+        flat_id=int(data.flat_id) if data.flat_id else None,
+        added_by=int(current_user.id)
+    )
+    # Credit Income/Dues (Income increases or Liability decreases)
+    t2 = Transaction(
+        society_id=current_user.society_id,
+        type=TransactionType.INCOME,
+        category="Receipt",
+        account_code=income_acct.code,
+        amount=data.amount,
+        debit_amount=0,
+        credit_amount=data.amount,
+        quantity=data.quantity,
+        unit_price=data.unit_price,
+        description=f"{full_description} (Flat: {data.flat_id})" if data.flat_id else full_description,
+        date=txn_date,
+        journal_entry_id=jv.id,
+        payment_method=data.payment_method,
+        flat_id=int(data.flat_id) if data.flat_id else None,  # Store flat_id for proper tracking
+        expense_month=data.expense_month if data.expense_month else txn_date.strftime("%B, %Y"),
+        added_by=int(current_user.id)
+    )
+    db.add_all([t1, t2])
+
+    # 6. Update Balances
+    asset_acct.current_balance += Decimal(str(data.amount))
+    income_acct.current_balance -= Decimal(str(data.amount))
+    
+    db.add_all([asset_acct, income_acct])
+
+    # 7. Auto-allocation for Maintenance Dues (1100)
+    if data.flat_id and data.account_code == '1100':
+        await db.flush() # Ensure transactions have IDs
+        flat_id_int = int(data.flat_id)
+        
+        # Try to find the primary member for this flat
+        result = await db.execute(
+            select(Member.user_id).where(
+                Member.flat_id == flat_id_int,
+                Member.society_id == current_user.society_id,
+                Member.is_primary == True
+            )
+        )
+        payer_user_id = result.scalar_one_or_none()
+        if not payer_user_id:
+            payer_user_id = int(current_user.id) # Fallback
+
+        remaining_amount = Decimal(str(data.amount))
+        
+        # Fetch unpaid bills for this flat, oldest first
+        result = await db.execute(
+            select(MaintenanceBill)
+            .where(
+                MaintenanceBill.flat_id == flat_id_int,
+                MaintenanceBill.society_id == current_user.society_id,
+                MaintenanceBill.status == BillStatus.UNPAID
+            )
+            .order_by(MaintenanceBill.year.asc(), MaintenanceBill.month.asc())
+        )
+        unpaid_bills = result.scalars().all()
+        
+        for bill in unpaid_bills:
+            if remaining_amount <= 0:
+                break
+            
+            # Calculate actual balance for THIS bill (monthly charges only)
+            result = await db.execute(
+                select(func.sum(Payment.amount)).where(Payment.bill_id == bill.id)
+            )
+            already_paid = result.scalar() or 0
+            bill_balance = Decimal(str(bill.amount)) - Decimal(str(already_paid))
+            
+            if bill_balance <= 0:
+                bill.status = BillStatus.PAID
+                continue
+
+            p_amount = min(bill_balance, remaining_amount)
+            
+            # Create Payment record in billing module
+            payment_rec = Payment(
+                society_id=current_user.society_id,
+                bill_id=bill.id,
+                flat_id=flat_id_int,
+                member_id=payer_user_id,
+                receipt_number=rv_number,  # Use the same RV number for all allocations from this receipt
+                payment_date=txn_date,
+                payment_mode=PaymentMode.CASH if data.payment_method == 'cash' else PaymentMode.BANK_TRANSFER,
+                amount=p_amount,
+                remarks=f"Auto-allocated from Receipt Voucher {rv_number}",
+                status=PaymentStatus.COMPLETED,
+                transaction_id=t2.id, # Link to the credit transaction
+                created_by=int(current_user.id),
+                recorded_by=int(current_user.id)
+            )
+            db.add(payment_rec)
+            
+            remaining_amount -= p_amount
+            
+            # Update bill status if fully paid
+            if p_amount >= bill_balance:
+                bill.status = BillStatus.PAID
+                bill.paid_date = txn_date
+
+    await db.commit()
+    await db.refresh(t1)
+
+    return TransactionResponse(
+        id=str(t1.id),
+        voucher_number=rv_number,
+        type="income",
+        category="Receipt",
+        description=t1.description,
+        amount=t1.amount,
+        quantity=data.quantity,
+        unit_price=data.unit_price,
+        date=t1.date,
+        journal_entry_id=jv.id,
+        account_code=t1.account_code,
+        added_by=str(t1.added_by),
+        created_at=t1.created_at,
+        updated_at=t1.updated_at
+    )
+
+
+@router.post("/payments", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
+async def create_payment(
+    data: PaymentCreate,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a Payment Voucher (Expense)"""
+    try:
+        txn_date = datetime.strptime(data.date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    pv_number = await generate_payment_voucher_number(db, current_user.society_id)
+    
+    result = await db.execute(select(AccountCode).where(AccountCode.code == data.account_code, AccountCode.society_id == current_user.society_id))
+    expense_acct = result.scalar_one_or_none()
+    
+    dest_code = data.bank_account_code if data.payment_method == 'bank' else '1010'
+    if data.payment_method == 'bank' and not data.bank_account_code:
+        dest_code = await get_bank_account_code_from_settings(current_user.society_id, db)
+        
+    result = await db.execute(select(AccountCode).where(AccountCode.code == dest_code, AccountCode.society_id == current_user.society_id))
+    asset_acct = result.scalar_one_or_none()
+    
+    if not expense_acct or not asset_acct:
+        raise HTTPException(status_code=400, detail="Invalid account codes")
+
+    full_description = f"{data.description} (Ref: {data.reference})" if data.reference else data.description
+    jv = JournalEntry(
+        society_id=current_user.society_id,
+        entry_number=pv_number,
+        date=txn_date,
+        description=full_description,
+        voucher_type=VoucherType.PAYMENT,
+        total_debit=Decimal(str(data.amount)),
+        total_credit=Decimal(str(data.amount)),
+        is_balanced=True,
+        expense_month=data.expense_month if data.expense_month else txn_date.strftime("%B, %Y"),
+        added_by=int(current_user.id)
+    )
+    db.add(jv)
+    await db.flush()
+
+    # Debit Expense
+    t1 = Transaction(
+        society_id=current_user.society_id,
+        type=TransactionType.EXPENSE,
+        category="Payment",
+        account_code=expense_acct.code,
+        amount=data.amount,
+        debit_amount=data.amount,
+        credit_amount=0,
+        quantity=data.quantity,
+        unit_price=data.unit_price,
+        description=full_description,
+        date=txn_date,
+        journal_entry_id=jv.id,
+        payment_method=data.payment_method,
+        flat_id=int(data.flat_id) if data.flat_id else None,
+        added_by=int(current_user.id)
+    )
+    # Credit Bank/Cash
+    t2 = Transaction(
+        society_id=current_user.society_id,
+        type=TransactionType.EXPENSE,
+        category="Payment",
+        account_code=asset_acct.code,
+        amount=data.amount,
+        debit_amount=0,
+        credit_amount=data.amount,
+        quantity=data.quantity,
+        unit_price=data.unit_price,
+        description=full_description,
+        date=txn_date,
+        journal_entry_id=jv.id,
+        payment_method=data.payment_method,
+        flat_id=int(data.flat_id) if data.flat_id else None,
+        added_by=int(current_user.id)
+    )
+    db.add_all([t1, t2])
+
+    expense_acct.current_balance += Decimal(str(data.amount))
+    asset_acct.current_balance -= Decimal(str(data.amount))
+    
+    db.add_all([expense_acct, asset_acct])
+    await db.commit()
+    await db.refresh(t1)
+
+    return TransactionResponse(
+        id=str(t1.id),
+        voucher_number=pv_number,
+        type="expense",
+        category="Payment",
+        description=t1.description,
+        amount=t1.amount,
+        quantity=data.quantity,
+        unit_price=data.unit_price,
+        date=t1.date,
+        journal_entry_id=jv.id,
+        account_code=t1.account_code,
+        added_by=str(t1.added_by),
+        created_at=t1.created_at,
+        updated_at=t1.updated_at
+    )

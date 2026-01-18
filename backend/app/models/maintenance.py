@@ -100,6 +100,7 @@ class MaintenanceBill(BaseModel):
 
     class Config:
         populate_by_name = True
+        from_attributes = True
 
 
 class MaintenanceBillDetail(BaseModel):
@@ -159,35 +160,35 @@ class CollectibleExpensesResponse(BaseModel):
     fixed_expenses: List[CollectibleExpense]
 
 class BillGenerationRequest(BaseModel):
-    """Enhanced request to generate bills for a month - CR-021 compliant"""
+    """Enhanced request to generate bills for a month"""
     month: int = Field(..., ge=1, le=12)
     year: int = Field(..., ge=2020)
     
-    # Maintenance Base (CR-021: sq.ft × rate, if rate is 0, don't calculate by area)
+    # Maintenance Base
     override_sqft_rate: Optional[float] = Field(None, ge=0, description="Maintenance rate per sq.ft. If 0, maintenance not calculated by area")
     
-    # Water (CR-021: Per person calculation with admin-adjusted inmates)
+    # Water
     override_water_charges: Optional[float] = Field(None, ge=0, description="Total water charges override (5110 + 5120). If not provided, calculated from transactions")
     adjusted_inmates: Optional[Dict[str, int]] = Field(None, description="Flat-wise adjusted inmate counts for water calculation. Key: flat_id, Value: adjusted count. Used for guests/vacations >7 days")
     
-    # Fixed Expenses (CR-021: Admin selects which expenses to include, equal or sqft distribution)
+    # Fixed Expenses
     selected_fixed_expense_codes: Optional[List[str]] = Field(default_factory=list, description="Account codes to include in fixed expenses (admin selection)")
     fixed_calculation_method: Literal["equal", "sqft"] = "equal"
     override_fixed_expenses: Optional[float] = Field(None, ge=0, description="Direct override for total fixed expenses if needed")
     
-    # Sinking Fund (CR-021: Per sq.ft or per flat)
+    # Sinking Fund
     sinking_calculation_method: Literal["equal", "sqft"] = "equal"
     override_sinking_fund: Optional[float] = Field(None, ge=0, description="Total sinking fund to collect. If not provided, uses settings")
     
-    # Repair Fund (CR-021: Per sq.ft or per flat)
+    # Repair Fund
     repair_fund_calculation_method: Literal["equal", "sqft"] = "equal"
     override_repair_fund: Optional[float] = Field(None, ge=0, description="Total repair fund to collect. If not provided, uses settings")
     
-    # Corpus Fund (CR-021: Per sq.ft or per flat)
+    # Corpus Fund
     corpus_fund_calculation_method: Literal["equal", "sqft"] = "equal"
     override_corpus_fund: Optional[float] = Field(None, ge=0, description="Total corpus fund to collect. If not provided, uses settings")
     
-    # Accounting Posting (CR-021: Auto-post to accounting)
+    # Accounting Posting
     auto_post_to_accounting: bool = Field(True, description="Automatically post bills to accounting (Debit 1100, Credit 4000/4010/etc)")
 
 
@@ -207,21 +208,23 @@ class BillGenerationResponse(BaseModel):
 
 
 class ReverseBillRequest(BaseModel):
-    """CR-021_revised: Request to reverse and regenerate a single flat's bill"""
+    """Request to reverse and regenerate a single flat's bill"""
     bill_id: str = Field(..., description="ID of the bill to reverse")
-    reversal_reason: str = Field(..., min_length=10, description="Reason for reversal (required for audit compliance)")
+    reversal_reason: str = Field(..., min_length=10, description="Reason for reversal")
     committee_approval: Optional[str] = Field(None, description="Committee approval reference/number")
 
 
 class RegenerateBillRequest(BaseModel):
-    """CR-021_revised: Request to regenerate a single flat's bill after reversal"""
+    """Request to regenerate a single flat's bill after reversal"""
     flat_id: str = Field(..., description="Flat ID for which to regenerate bill")
     month: int = Field(..., ge=1, le=12)
     year: int = Field(..., ge=2020)
-    # Manual overrides for the regenerated bill
+    # CR-021: Auto-calculate bill amounts, only adjusted_inmates is manual
+    adjusted_inmates: Optional[int] = Field(None, ge=0, description="Adjusted number of occupants (for dispute resolution)")
+    # Manual overrides (kept for backward compatibility, but auto-calculation is preferred)
+    override_fixed: Optional[float] = Field(None, ge=0, description="Override fixed expenses (optional, auto-calculated if not provided)")
     override_maintenance: Optional[float] = Field(None, ge=0)
     override_water: Optional[float] = Field(None, ge=0)
-    override_fixed: Optional[float] = Field(None, ge=0)
     override_sinking: Optional[float] = Field(None, ge=0)
     override_repair: Optional[float] = Field(None, ge=0)
     override_corpus: Optional[float] = Field(None, ge=0)

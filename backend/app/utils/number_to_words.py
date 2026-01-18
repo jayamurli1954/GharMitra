@@ -3,7 +3,6 @@ Utility function to convert numbers to words (Indian numbering system)
 Used for maintenance bill amount in words
 """
 
-
 def number_to_words(num):
     """
     Convert a number to words in Indian numbering system
@@ -13,8 +12,8 @@ def number_to_words(num):
         return "Zero Rupees Only"
     
     # Split into integer and decimal parts
-    integer_part = int(num)
-    decimal_part = round((num - integer_part) * 100)
+    integer_part = int(abs(num))
+    decimal_part = round((abs(num) - integer_part) * 100)
     
     # Convert integer part
     rupees = convert_to_words(integer_part)
@@ -27,11 +26,16 @@ def number_to_words(num):
         paise_text = f" and {paise} Paise" if paise else ""
     
     result = f"{rupees_text}{paise_text} Only" if rupees_text or paise_text else "Zero Rupees Only"
+    
+    # Handle negative numbers
+    if num < 0:
+        result = "Minus " + result
+        
     return result
 
 
 def convert_to_words(n):
-    """Convert integer to words"""
+    """Convert integer to words using Indian numbering system (Lakhs, Crores)"""
     if n == 0:
         return ""
     
@@ -52,19 +56,21 @@ def convert_to_words(n):
         if remainder > 0:
             return hundred + " " + convert_to_words(remainder)
         return hundred
-    elif n < 100000:  # Lakhs
-        lakh = convert_to_words(n // 100000)
+    elif n < 100000:  # Thousands (up to 99,999)
+        thousand = convert_to_words(n // 1000) + " Thousand"
+        remainder = n % 1000
+        if remainder > 0:
+            return thousand + " " + convert_to_words(remainder)
+        return thousand
+    elif n < 10000000:  # Lakhs (up to 99,99,999)
+        lakh = convert_to_words(n // 100000) + " Lakh"
         remainder = n % 100000
         if remainder > 0:
-            return convert_to_words(n // 100000) + " Lakh " + convert_to_words(remainder)
-        return convert_to_words(n // 100000) + " Lakh"
-    elif n < 10000000:  # Crores
-        crore = convert_to_words(n // 10000000)
+            return lakh + " " + convert_to_words(remainder)
+        return lakh
+    else:  # Crores and above
+        crore = convert_to_words(n // 10000000) + " Crore"
         remainder = n % 10000000
         if remainder > 0:
-            return convert_to_words(n // 10000000) + " Crore " + convert_to_words(remainder)
-        return convert_to_words(n // 10000000) + " Crore"
-    else:
-        # For very large numbers, handle recursively
-        return convert_to_words(n // 10000000) + " Crore " + convert_to_words(n % 10000000)
-
+            return crore + " " + convert_to_words(remainder)
+        return crore

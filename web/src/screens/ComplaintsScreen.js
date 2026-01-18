@@ -18,7 +18,8 @@ const ComplaintsScreen = () => {
         title: '',
         description: '',
         type: 'other',
-        priority: 'medium'
+        priority: 'medium',
+        scope: 'individual'
     });
     const [submitting, setSubmitting] = useState(false);
 
@@ -46,7 +47,7 @@ const ComplaintsScreen = () => {
         try {
             await complaintsService.createComplaint(formData);
             setShowModal(false);
-            setFormData({ title: '', description: '', type: 'other', priority: 'medium' });
+            setFormData({ title: '', description: '', type: 'other', priority: 'medium', scope: 'individual' });
             loadData();
         } catch (error) {
             console.error('Error creating complaint:', error);
@@ -218,10 +219,25 @@ const ComplaintsScreen = () => {
                                     marginTop: 'auto',
                                     borderTop: '1px solid #eee',
                                     paddingTop: '10px',
-                                    width: '100%'
+                                    width: '100%',
+                                    display: 'flex',
+                                    justifyContent: 'space-between'
                                 }}>
-                                    By: {complaint.user_name} ({complaint.flat_number}) <br />
-                                    {new Date(complaint.created_at).toLocaleDateString()}
+                                    <div>
+                                        By: {complaint.user_name} ({complaint.flat_number}) <br />
+                                        {new Date(complaint.created_at).toLocaleDateString()}
+                                    </div>
+                                    <div style={{
+                                        alignSelf: 'flex-end',
+                                        backgroundColor: complaint.scope === 'common_area' ? '#EEF2FF' : '#F3F4F6',
+                                        color: complaint.scope === 'common_area' ? '#4F46E5' : '#4B5563',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        fontWeight: 'bold',
+                                        fontSize: '10px'
+                                    }}>
+                                        {complaint.scope === 'common_area' ? '🏢 COMMON' : '🏠 FLAT'}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -267,6 +283,39 @@ const ComplaintsScreen = () => {
                                     <option value="parking">Parking</option>
                                     <option value="other">Other</option>
                                 </select>
+                            </div>
+                            <div style={{ marginBottom: '15px' }}>
+                                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Complaint Scope</label>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    {[
+                                        { value: 'individual', label: 'Individual Flat', icon: '🏠' },
+                                        { value: 'common_area', label: 'Common Area', icon: '🏢' }
+                                    ].map(s => (
+                                        <label key={s.value} style={{
+                                            flex: 1, textAlign: 'center', padding: '10px', border: '1px solid #ddd',
+                                            borderRadius: '8px', cursor: 'pointer',
+                                            backgroundColor: formData.scope === s.value ? '#EEF2FF' : 'white',
+                                            borderColor: formData.scope === s.value ? '#4F46E5' : '#ddd',
+                                            color: formData.scope === s.value ? '#4F46E5' : '#333',
+                                            fontWeight: formData.scope === s.value ? 'bold' : 'normal',
+                                            transition: 'all 0.2s'
+                                        }}>
+                                            <input
+                                                type="radio" name="scope" value={s.value}
+                                                checked={formData.scope === s.value}
+                                                onChange={() => setFormData({ ...formData, scope: s.value })}
+                                                style={{ display: 'none' }}
+                                            />
+                                            <div style={{ fontSize: '18px', marginBottom: '4px' }}>{s.icon}</div>
+                                            <div style={{ fontSize: '11px' }}>{s.label}</div>
+                                        </label>
+                                    ))}
+                                </div>
+                                <p style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>
+                                    {formData.scope === 'common_area'
+                                        ? '💡 Common area complaints are visible to all residents.'
+                                        : '🔒 Individual flat complaints are private to you and admins.'}
+                                </p>
                             </div>
                             <div style={{ marginBottom: '15px' }}>
                                 <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Priority</label>
@@ -352,6 +401,14 @@ const ComplaintsScreen = () => {
                                 padding: '4px 12px', borderRadius: '20px'
                             }}>
                                 {selectedComplaint.priority.toUpperCase()} PRIORITY
+                            </span>
+                            <span style={{
+                                fontSize: '12px', fontWeight: 'bold',
+                                backgroundColor: selectedComplaint.scope === 'common_area' ? '#EEF2FF' : '#F3F4F6',
+                                color: selectedComplaint.scope === 'common_area' ? '#4F46E5' : '#4B5563',
+                                padding: '4px 12px', borderRadius: '20px'
+                            }}>
+                                {selectedComplaint.scope === 'common_area' ? '🏢 COMMON AREA' : '🏠 INDIVIDUAL FLAT'}
                             </span>
                         </div>
 

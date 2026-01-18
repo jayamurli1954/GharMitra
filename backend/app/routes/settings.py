@@ -38,9 +38,14 @@ async def get_society_settings(
             "society_name": society.name if society else None,
             "society_address": society.address if society else None,
             "registration_number": society.registration_no if society else None,
+            "registration_date": None, # Date formatting if needed
+            "pan_no": society.pan_no if society else None,
             "city": society.city if society else None,
             "state": society.state if society else None,
-            "pincode": society.pin_code if society else None,
+            "pin_code": society.pin_code if society else None,
+            "contact_email": society.email if society else None,
+            "contact_phone": society.mobile if society else None,
+            "gst_registration_applicable": society.gst_registration_applicable if society else False,
             "created_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat()
         }
@@ -52,9 +57,14 @@ async def get_society_settings(
         "society_name": society.name if society else None,
         "society_address": society.address if society else None,
         "registration_number": society.registration_no if society else None,
+        "registration_date": None, # Date formatting if needed
+        "pan_no": society.pan_no if society else None,
         "city": society.city if society else None,
         "state": society.state if society else None,
-        "pincode": society.pin_code if society else None,
+        "pin_code": society.pin_code if society else None,
+        "contact_email": society.email if society else None,
+        "contact_phone": society.mobile if society else None,
+        "gst_registration_applicable": society.gst_registration_applicable if society else False,
         "late_payment_penalty_type": settings.late_payment_penalty_type,
         "late_payment_penalty_value": settings.late_payment_penalty_value,
         "late_payment_grace_days": settings.late_payment_grace_days,
@@ -185,37 +195,43 @@ async def create_or_update_society_settings_impl(
     )
     existing_settings = result.scalar_one_or_none()
     
+    # Separate SocietySettings fields from Society fields
+    # Fields that belong to Society model, not SocietySettings model
+    SOCIETY_MODEL_FIELDS = {
+        "society_name", "society_address", "registration_number", 
+        "city", "state", "pin_code", "financial_year_start",
+        "registration_date", "pan_no", "contact_email", "contact_phone", "gst_registration_applicable"
+    }
+
     if existing_settings:
         # Update existing settings
-        update_data = settings_data.dict(exclude_unset=True)
+        full_dict = settings_data.dict(exclude_unset=True)
+        # Filter for only keys that exist in SocietySettings model or are blocks_config
+        update_data = {k: v for k, v in full_dict.items() if k not in SOCIETY_MODEL_FIELDS}
         
         # Always include blocks_config if it's in the request (even if empty list)
-        # This ensures we can update blocks_config even if it's being set to empty
         if 'blocks_config' in settings_data.dict(exclude_unset=False):
             update_data['blocks_config'] = settings_data.blocks_config
-            print(f"SETTINGS UPDATE: blocks_config explicitly set to: {settings_data.blocks_config}")
         
         for key, value in update_data.items():
             # Validate NOT NULL constraints for specific fields
             if key in ["transaction_date_lock_months", "transaction_date_lock_enabled"] and value is None:
                 continue
             setattr(existing_settings, key, value)
-            if key == 'blocks_config':
-                print(f"SETTINGS UPDATE: Set blocks_config on settings object to: {value}")
         
         existing_settings.updated_at = datetime.utcnow()
         await db.commit()
         await db.refresh(existing_settings)
         settings = existing_settings
-        print(f"SETTINGS UPDATE: After refresh, settings.blocks_config = {settings.blocks_config}")
     else:
         # Create new settings
+        full_dict = settings_data.dict(exclude_unset=True)
+        create_data = {k: v for k, v in full_dict.items() if k not in SOCIETY_MODEL_FIELDS}
+        
         new_settings = SocietySettings(
             society_id=current_user.society_id,
-            **settings_data.dict(exclude_unset=True)
+            **create_data
         )
-        db.add(new_settings)
-        await db.commit()
         db.add(new_settings)
         await db.commit()
         await db.refresh(new_settings)
@@ -244,6 +260,14 @@ async def create_or_update_society_settings_impl(
                 society.state = settings_dict['state']
             if settings_dict.get('pin_code'):
                 society.pin_code = settings_dict['pin_code']
+            if settings_dict.get('pan_no'):
+                society.pan_no = settings_dict['pan_no']
+            if settings_dict.get('contact_email'):
+                society.email = settings_dict['contact_email']
+            if settings_dict.get('contact_phone'):
+                society.mobile = settings_dict['contact_phone']
+            if settings_dict.get('gst_registration_applicable') is not None:
+                society.gst_registration_applicable = settings_dict['gst_registration_applicable']
             await db.commit()
             await db.refresh(society)
             
@@ -492,9 +516,24 @@ async def create_or_update_society_settings_impl(
             # This prevents settings save from failing due to flat sync issues
             print(f"WARNING: Flat sync failed but settings were saved. Error: {str(e)}")
 
+    # Fetch Society details for response
+    society_result = await db.execute(select(Society).where(Society.id == current_user.society_id))
+    society = society_result.scalar_one_or_none()
+
     return SocietySettingsResponse(
         id=str(settings.id),
         society_id=settings.society_id,
+        society_name=society.name if society else None,
+        society_address=society.address if society else None,
+        registration_number=society.registration_no if society else None,
+        registration_date=None,
+        pan_no=society.pan_no if society else None,
+        city=society.city if society else None,
+        state=society.state if society else None,
+        pin_code=society.pin_code if society else None,
+        contact_email=society.email if society else None,
+        contact_phone=society.mobile if society else None,
+        gst_registration_applicable=society.gst_registration_applicable if society else False,
         late_payment_penalty_type=settings.late_payment_penalty_type,
         late_payment_penalty_value=settings.late_payment_penalty_value,
         late_payment_grace_days=settings.late_payment_grace_days,

@@ -83,9 +83,14 @@ class SocietySettingsCreate(BaseModel):
     society_name: Optional[str] = Field(None, max_length=100)
     society_address: Optional[str] = None
     registration_number: Optional[str] = None
+    registration_date: Optional[str] = None
+    pan_no: Optional[str] = Field(None, max_length=20)
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
     pin_code: Optional[str] = Field(None, max_length=10)
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    gst_registration_applicable: Optional[bool] = None
     
     # Tax
     gst_enabled: Optional[bool] = None
@@ -324,9 +329,14 @@ class SocietySettingsResponse(BaseModel):
     society_name: Optional[str] = None
     society_address: Optional[str] = None
     registration_number: Optional[str] = None
+    registration_date: Optional[str] = None
+    pan_no: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
-    pincode: Optional[str] = None
+    pin_code: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    gst_registration_applicable: bool = False
 
     # Penalty/Interest
     late_payment_penalty_type: Optional[str] = None

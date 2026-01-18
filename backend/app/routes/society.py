@@ -1,15 +1,23 @@
 """Society registration routes"""
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import os
+import uuid
+import shutil
 
 from app.models.society import SocietyCreate, SocietyResponse, SocietyUpdate
 from app.models.user import UserResponse, Token
-from app.models_db import Society, User, UserRole
+from app.models_db import Society, User, UserRole, SocietySettings
 from app.utils.security import get_password_hash, create_access_token
 from app.database import get_db
 from app.dependencies import get_current_user, get_current_admin_user
+
+UPLOAD_DIR_SOCIETY = "uploads/society"
+ALLOW_EXTENSIONS_SOCIETY = {".pdf", ".jpg", ".jpeg", ".png", ".docx"}
+MAX_SIZE_SOCIETY = 10 * 1024 * 1024  # 10MB
 
 router = APIRouter()
 
@@ -172,8 +180,13 @@ async def get_society(
             detail="Society not found"
         )
     
+    # Fetch Legal Config from SocietySettings
+    settings_result = await db.execute(select(SocietySettings).where(SocietySettings.society_id == society_id_int))
+    settings = settings_result.scalar_one_or_none()
+    legal_config = settings.legal_config if settings else None
+    
     return SocietyResponse(
-        id=str(society.id),
+        _id=str(society.id),
         name=society.name,
         address=society.address,
         registration_no=society.registration_no,
@@ -193,6 +206,7 @@ async def get_society(
         landline=society.landline,
         mobile=society.mobile,
         gst_registration_applicable=society.gst_registration_applicable if society.gst_registration_applicable is not None else False,
+        legal_config=legal_config,
         created_at=society.created_at,
         updated_at=society.updated_at
     )
@@ -270,3 +284,118 @@ async def update_society_settings(
         updated_at=society.updated_at
     )
 
+
+@router.post("/upload-document", status_code=status.HTTP_201_CREATED)
+async def upload_society_document(
+    file: UploadFile = File(...),
+    document_type: str = Form("other"),
+    current_user: UserResponse = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Upload a society-wide document (Bye-laws, Registration, etc.)"""
+    # 1. Validate extension
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ALLOW_EXTENSIONS_SOCIETY:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Supported: {', '.join(ALLOW_EXTENSIONS_SOCIETY)}"
+        )
+
+    # 2. Create directory
+    os.makedirs(UPLOAD_DIR_SOCIETY, exist_ok=True)
+
+    # 3. Generate unique name
+    unique_filename = f"society_{current_user.society_id}_{document_type}_{uuid.uuid4().hex}{file_ext}"
+    file_path = os.path.join(UPLOAD_DIR_SOCIETY, unique_filename)
+
+    # 4. Save file
+    try:
+        content = await file.read()
+        if len(content) > MAX_SIZE_SOCIETY:
+            raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+        
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
+    # 5. Return the URL/Path
+    # For now we return a relative path that we can use to fetch later
+    return {
+        "file_name": file.filename,
+        "file_path": file_path.replace("\\", "/"),
+        "url": f"/society/documents/{unique_filename}"
+    }
+
+@router.post("/upload-logo", status_code=status.HTTP_201_CREATED)
+async def upload_society_logo(
+    file: UploadFile = File(...),
+    current_user: UserResponse = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Upload society logo"""
+    # 1. Validate extension (only images)
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    allowed_logo_extensions = ['.png', '.jpg', '.jpeg']
+    if file_ext not in allowed_logo_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Supported: PNG, JPG, JPEG"
+        )
+
+    # 2. Create directory
+    os.makedirs(UPLOAD_DIR_SOCIETY, exist_ok=True)
+
+    # 3. Generate unique name
+    unique_filename = f"society_{current_user.society_id}_logo{file_ext}"
+    file_path = os.path.join(UPLOAD_DIR_SOCIETY, unique_filename)
+
+    # 4. Save file
+    try:
+        content = await file.read()
+        # Max 2MB for logos
+        if len(content) > 2 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Logo file too large (max 2MB)")
+
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save logo: {str(e)}")
+
+    # 5. Update society logo_url in database
+    result = await db.execute(
+        select(Society).where(Society.id == current_user.society_id)
+    )
+    society = result.scalar_one_or_none()
+
+    if society:
+        # Store the file path as logo_url
+        society.logo_url = file_path.replace("\\", "/")
+        await db.commit()
+
+    # 6. Return the URL/Path
+    return {
+        "file_name": file.filename,
+        "logo_url": file_path.replace("\\", "/"),
+        "message": "Logo uploaded successfully"
+    }
+
+@router.get("/documents/{filename}")
+async def get_society_document(
+    filename: str,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Fetch/Download a society document"""
+    # Security check: Ensure filename starts with society_{id}_
+    # This prevents users from accessing other societies' documents
+    if not filename.startswith(f"society_{current_user.society_id}_"):
+         raise HTTPException(status_code=403, detail="Access denied to this document")
+
+    file_path = os.path.join(UPLOAD_DIR_SOCIETY, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return FileResponse(file_path)

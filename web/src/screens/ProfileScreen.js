@@ -53,8 +53,22 @@ const ProfileScreen = () => {
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     try {
-      const response = await api.put('/auth/profile', formData);
-      setUser(response.data);
+      // Map frontend fields (mobile, flat_number) to backend fields (phone_number, apartment_number)
+      const payload = {
+        name: formData.name,
+        phone_number: formData.mobile,
+        apartment_number: formData.flat_number
+      };
+
+      const response = await api.put('/auth/me', payload);
+      const updatedUser = response.data;
+
+      setUser(updatedUser);
+      // Update storage so name/mobile change reflects everywhere without refresh
+      if (authService.updateStoredUser) {
+        await authService.updateStoredUser(updatedUser);
+      }
+
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
       setEditing(false);
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
@@ -105,9 +119,9 @@ const ProfileScreen = () => {
       {/* Header */}
       <div className="dashboard-header">
         <div className="dashboard-header-left">
-          <img 
-            src="/GharMitra_Logo.png" 
-            alt="GharMitra Logo" 
+          <img
+            src="/GharMitra_Logo.png"
+            alt="GharMitra Logo"
             className="dashboard-logo"
           />
           <div className="dashboard-header-text">
@@ -121,7 +135,7 @@ const ProfileScreen = () => {
         </div>
         <div className="dashboard-header-right">
           <span className="dashboard-header-icon" title="Notifications">🔔</span>
-          <div 
+          <div
             className="dashboard-user-info"
             onClick={() => navigate('/profile')}
             style={{ cursor: 'pointer' }}

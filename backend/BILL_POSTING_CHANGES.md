@@ -1,4 +1,4 @@
-# Bill Posting Changes - CR-021_revised Implementation
+# Bill Posting Changes -  Implementation
 
 ## Summary of Changes
 

@@ -7,7 +7,7 @@ from sqlalchemy import select, desc
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.models_db import Complaint, ComplaintStatus, ComplaintType, ComplaintPriority, User, UserRole
+from app.models_db import Complaint, ComplaintStatus, ComplaintType, ComplaintPriority, ComplaintScope, User, UserRole
 from app.dependencies import get_current_user, get_current_active_user
 
 router = APIRouter()
@@ -18,11 +18,13 @@ class ComplaintCreate(BaseModel):
     description: str
     type: ComplaintType = ComplaintType.OTHER
     priority: ComplaintPriority = ComplaintPriority.MEDIUM
+    scope: ComplaintScope = ComplaintScope.INDIVIDUAL
 
 class ComplaintUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     type: Optional[ComplaintType] = None
+    scope: Optional[ComplaintScope] = None
     status: Optional[ComplaintStatus] = None
     priority: Optional[ComplaintPriority] = None
     assigned_to: Optional[str] = None
@@ -33,6 +35,7 @@ class ComplaintResponse(BaseModel):
     title: str
     description: str
     type: ComplaintType
+    scope: ComplaintScope
     status: ComplaintStatus
     priority: ComplaintPriority
     created_at: datetime
@@ -43,7 +46,7 @@ class ComplaintResponse(BaseModel):
     flat_number: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --- Routes ---
 
@@ -62,6 +65,7 @@ async def create_complaint(
         title=complaint_data.title,
         description=complaint_data.description,
         type=complaint_data.type,
+        scope=complaint_data.scope,
         priority=complaint_data.priority,
         status=ComplaintStatus.OPEN
     )
@@ -85,9 +89,15 @@ async def list_complaints(
     """
     query = select(Complaint).where(Complaint.society_id == current_user.society_id)
     
-    # Permission Check: Residents only see their own
+    # Permission Check: Residents see their own complaints OR common area complaints
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.CHAIRMAN, UserRole.SECRETARY]:
-        query = query.where(Complaint.user_id == current_user.id)
+        from sqlalchemy import or_
+        query = query.where(
+            or_(
+                Complaint.user_id == current_user.id,
+                Complaint.scope == ComplaintScope.COMMON_AREA
+            )
+        )
         
     if status:
         query = query.where(Complaint.status == status)
@@ -155,6 +165,8 @@ async def update_complaint(
             complaint.description = update_dict['description']
         if 'type' in update_dict and update_dict['type']:
             complaint.type = update_dict['type']
+        if 'scope' in update_dict and update_dict['scope']:
+            complaint.scope = update_dict['scope']
 
     # Update status (can be set by both admin and owner)
     if 'status' in update_dict and update_dict['status'] is not None:
@@ -170,6 +182,8 @@ async def update_complaint(
             complaint.type = update_dict['type']
         if 'priority' in update_dict and update_dict['priority'] is not None:
             complaint.priority = update_dict['priority']
+        if 'scope' in update_dict and update_dict['scope'] is not None:
+            complaint.scope = update_dict['scope']
         if 'assigned_to' in update_dict:
             complaint.assigned_to = update_dict['assigned_to']
         if 'resolution_notes' in update_dict:
@@ -191,6 +205,7 @@ def map_to_response(complaint, user):
         title=complaint.title,
         description=complaint.description,
         type=complaint.type,
+        scope=complaint.scope,
         status=complaint.status,
         priority=complaint.priority,
         created_at=complaint.created_at,

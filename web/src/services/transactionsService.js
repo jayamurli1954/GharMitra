@@ -49,8 +49,38 @@ export const transactionsService = {
     /**
      * Reverse a transaction (group reversal via journal_entry if linked)
      */
-    async reverseTransaction(id) {
-        const response = await api.post(`${BASE_URL}/${id}/reverse`);
+    async reverseTransaction(id, reason = null) {
+        let url = `${BASE_URL}/${id}/reverse`;
+        if (reason) {
+            url += `?reason=${encodeURIComponent(reason)}`;
+        }
+        const response = await api.post(url);
+        return response.data;
+    },
+
+    /**
+     * Create a specialized Receipt Voucher
+     */
+    async createReceipt(receiptData) {
+        const response = await api.post(`${BASE_URL}/receipts`, receiptData);
+        return response.data;
+    },
+
+    /**
+     * Create a specialized Payment Voucher
+     */
+    async createPayment(paymentData) {
+        const response = await api.post(`${BASE_URL}/payments`, paymentData);
+        return response.data;
+    },
+
+    /**
+     * Download Voucher PDF
+     */
+    async downloadVoucherPdf(journalEntryId) {
+        const response = await api.get(`${BASE_URL}/vouchers/${journalEntryId}/pdf`, {
+            responseType: 'blob'
+        });
         return response.data;
     }
 };

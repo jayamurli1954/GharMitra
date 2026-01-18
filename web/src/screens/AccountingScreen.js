@@ -2425,10 +2425,14 @@ const ReportsTab = () => {
         setReportData(response.data);
         setSuccess(`Ledger Statement generated successfully for ${response.data.account_name}`);
       } else if (selectedReport === 'balance-sheet') {
+        if (!reportParams.as_on_date) {
+          setError('Please select an "As On Date" for Balance Sheet report');
+          setLoading(false);
+          return;
+        }
         response = await api.get('/reports/balance-sheet', {
           params: {
-            from_date: reportParams.from_date || reportParams.as_on_date,
-            to_date: reportParams.to_date || reportParams.as_on_date
+            as_on_date: reportParams.as_on_date
           }
         });
         setReportData(response.data);
@@ -2845,73 +2849,240 @@ const ReportsTab = () => {
           </div>
         )}
 
-        {reportData && selectedReport === 'balance-sheet' && (
-          <div className="settings-section" style={{ marginTop: '30px' }}>
-            <h3>Balance Sheet Report</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-              <div>
-                <h4 style={{ color: '#007AFF', marginBottom: '10px' }}>Assets</h4>
-                <div className="settings-table-container">
-                  <table className="settings-table">
-                    <thead>
-                      <tr>
-                        <th>Account</th>
-                        <th style={{ textAlign: 'right' }}>Amount (₹)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportData.assets && reportData.assets.map((item, idx) => (
-                        <tr key={idx}>
-                          <td>{item.account_name}</td>
-                          <td style={{ textAlign: 'right' }}>₹{item.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ fontWeight: 'bold' }}>
-                        <td>Total Assets</td>
-                        <td style={{ textAlign: 'right' }}>₹{reportData.total_assets.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+        {reportData && selectedReport === 'balance-sheet' && (() => {
+          const isBalanced = reportData.is_balanced !== false;
+          const formatCurrency = (amount) => `₹${(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+          
+          return (
+            <div className="settings-section" style={{ marginTop: '30px' }}>
+              <h3 style={{ textAlign: 'center', marginBottom: '20px' }}>
+                Balance Sheet as on {reportData.as_on_date || reportParams.as_on_date}
+              </h3>
+              
+              {/* Balance Check Message */}
+              {isBalanced ? (
+                <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#d4edda', borderRadius: '8px', color: '#155724', textAlign: 'center' }}>
+                  ✓ Balance Sheet is balanced: Assets = Liabilities
                 </div>
-              </div>
-              <div>
-                <h4 style={{ color: '#FF3B30', marginBottom: '10px' }}>Liabilities & Capital</h4>
-                <div className="settings-table-container">
-                  <table className="settings-table">
-                    <thead>
-                      <tr>
-                        <th>Account</th>
-                        <th style={{ textAlign: 'right' }}>Amount (₹)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportData.liabilities && reportData.liabilities.map((item, idx) => (
-                        <tr key={idx}>
-                          <td>{item.account_name}</td>
-                          <td style={{ textAlign: 'right' }}>₹{item.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                        </tr>
-                      ))}
-                      {reportData.capital && reportData.capital.map((item, idx) => (
-                        <tr key={idx}>
-                          <td>{item.account_name}</td>
-                          <td style={{ textAlign: 'right' }}>₹{item.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ fontWeight: 'bold' }}>
-                        <td>Total Liabilities & Capital</td>
-                        <td style={{ textAlign: 'right' }}>₹{reportData.total_liabilities_capital.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+              ) : (
+                <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#f8d7da', borderRadius: '8px', color: '#721c24', textAlign: 'center' }}>
+                  ⚠ Balance Sheet mismatch detected. Assets: {formatCurrency(reportData.total_assets)} ≠ Liabilities: {formatCurrency(reportData.total_liabilities)}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginTop: '20px' }}>
+                {/* LIABILITIES SIDE */}
+                <div>
+                  <h4 style={{ color: '#FF3B30', marginBottom: '15px', borderBottom: '3px solid #FF3B30', paddingBottom: '8px', fontSize: '18px', fontWeight: 'bold' }}>
+                    🟩 LIABILITIES
+                  </h4>
+                  
+                  {/* A. Capital & Funds */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ marginBottom: '10px', fontWeight: 'bold', color: '#333' }}>A. Capital & Funds</h5>
+                    <div className="settings-table-container">
+                      <table className="settings-table">
+                        <thead>
+                          <tr>
+                            <th>Particulars</th>
+                            <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.capital_funds && reportData.capital_funds.length > 0 ? (
+                            reportData.capital_funds.map((item, idx) => (
+                              <tr key={idx}>
+                                <td>{item.name}</td>
+                                <td style={{ textAlign: 'right' }}>{formatCurrency(item.balance)}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan="2" style={{ textAlign: 'center', color: '#999', fontStyle: 'italic' }}>No capital & funds recorded</td>
+                            </tr>
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ fontWeight: 'bold', backgroundColor: '#f0f0f0' }}>
+                            <td>Total Funds</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(reportData.total_capital_funds || 0)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* B. Current Liabilities & Provisions */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ marginBottom: '10px', fontWeight: 'bold', color: '#333' }}>B. Current Liabilities & Provisions</h5>
+                    <div className="settings-table-container">
+                      <table className="settings-table">
+                        <thead>
+                          <tr>
+                            <th>Particulars</th>
+                            <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.current_liabilities && reportData.current_liabilities.length > 0 ? (
+                            reportData.current_liabilities.map((item, idx) => (
+                              <tr key={idx}>
+                                <td>{item.name}</td>
+                                <td style={{ textAlign: 'right' }}>{formatCurrency(item.balance)}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan="2" style={{ textAlign: 'center', color: '#999', fontStyle: 'italic' }}>No current liabilities recorded</td>
+                            </tr>
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ fontWeight: 'bold', backgroundColor: '#f0f0f0' }}>
+                            <td>Total Current Liabilities</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(reportData.total_current_liabilities || 0)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* TOTAL LIABILITIES */}
+                  <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#fff9e6', borderRadius: '8px', border: '2px solid #FF3B30' }}>
+                    <h4 style={{ margin: 0, textAlign: 'center', fontWeight: 'bold', fontSize: '16px' }}>
+                      TOTAL LIABILITIES
+                    </h4>
+                    <div style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold', marginTop: '10px' }}>
+                      {formatCurrency(reportData.total_liabilities || 0)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ASSETS SIDE */}
+                <div>
+                  <h4 style={{ color: '#007AFF', marginBottom: '15px', borderBottom: '3px solid #007AFF', paddingBottom: '8px', fontSize: '18px', fontWeight: 'bold' }}>
+                    🟦 ASSETS
+                  </h4>
+                  
+                  {/* A. Fixed Assets */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ marginBottom: '10px', fontWeight: 'bold', color: '#333' }}>A. Fixed Assets</h5>
+                    <div className="settings-table-container">
+                      <table className="settings-table">
+                        <thead>
+                          <tr>
+                            <th>Particulars</th>
+                            <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.fixed_assets && reportData.fixed_assets.length > 0 ? (
+                            reportData.fixed_assets.map((item, idx) => (
+                              <tr key={idx}>
+                                <td>{item.name}</td>
+                                <td style={{ textAlign: 'right' }}>{formatCurrency(item.balance)}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan="2" style={{ textAlign: 'center', color: '#999', fontStyle: 'italic' }}>No fixed assets recorded</td>
+                            </tr>
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ fontWeight: 'bold', backgroundColor: '#f0f0f0' }}>
+                            <td>Net Fixed Assets</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(reportData.total_fixed_assets || 0)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* B. Investments */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ marginBottom: '10px', fontWeight: 'bold', color: '#333' }}>B. Investments</h5>
+                    <div className="settings-table-container">
+                      <table className="settings-table">
+                        <thead>
+                          <tr>
+                            <th>Particulars</th>
+                            <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.investments && reportData.investments.length > 0 ? (
+                            reportData.investments.map((item, idx) => (
+                              <tr key={idx}>
+                                <td>{item.name}</td>
+                                <td style={{ textAlign: 'right' }}>{formatCurrency(item.balance)}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan="2" style={{ textAlign: 'center', color: '#999', fontStyle: 'italic' }}>No investments recorded</td>
+                            </tr>
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ fontWeight: 'bold', backgroundColor: '#f0f0f0' }}>
+                            <td>Total Investments</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(reportData.total_investments || 0)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* C. Current Assets */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ marginBottom: '10px', fontWeight: 'bold', color: '#333' }}>C. Current Assets</h5>
+                    <div className="settings-table-container">
+                      <table className="settings-table">
+                        <thead>
+                          <tr>
+                            <th>Particulars</th>
+                            <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.current_assets && reportData.current_assets.length > 0 ? (
+                            reportData.current_assets.map((item, idx) => (
+                              <tr key={idx}>
+                                <td>{item.name}</td>
+                                <td style={{ textAlign: 'right' }}>{formatCurrency(item.balance)}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan="2" style={{ textAlign: 'center', color: '#999', fontStyle: 'italic' }}>No current assets recorded</td>
+                            </tr>
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ fontWeight: 'bold', backgroundColor: '#f0f0f0' }}>
+                            <td>Total Current Assets</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(reportData.total_current_assets || 0)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* TOTAL ASSETS */}
+                  <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#e6f3ff', borderRadius: '8px', border: '2px solid #007AFF' }}>
+                    <h4 style={{ margin: 0, textAlign: 'center', fontWeight: 'bold', fontSize: '16px' }}>
+                      TOTAL ASSETS
+                    </h4>
+                    <div style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold', marginTop: '10px' }}>
+                      {formatCurrency(reportData.total_assets || 0)}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {reportData && selectedReport === 'profit-loss' && (
           <div className="settings-section" style={{ marginTop: '30px' }}>
@@ -2957,6 +3128,12 @@ const ReportsTab = () => {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr style={{ fontWeight: 'bold', backgroundColor: '#f0f8ff', borderTop: '2px solid #007AFF' }}>
+                        <td colSpan="2">Total Income</td>
+                        <td style={{ textAlign: 'right', color: '#007AFF' }}>₹{reportData.total_income.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               </div>
@@ -2982,6 +3159,12 @@ const ReportsTab = () => {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr style={{ fontWeight: 'bold', backgroundColor: '#fff0f0', borderTop: '2px solid #FF3B30' }}>
+                        <td colSpan="2">Total Expenditure</td>
+                        <td style={{ textAlign: 'right', color: '#FF3B30' }}>₹{reportData.total_expenditure.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               </div>

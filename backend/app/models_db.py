@@ -20,11 +20,19 @@ class UserRole(str, enum.Enum):
     SECRETARY = "secretary"
     TREASURER = "treasurer"
     AUDITOR = "auditor"
+    SECURITY = "security"
 
 
 class TransactionType(str, enum.Enum):
     INCOME = "income"
     EXPENSE = "expense"
+
+
+class VoucherType(str, enum.Enum):
+    RECEIPT = "receipt"
+    PAYMENT = "payment"
+    JOURNAL = "journal"
+    TRANSFER = "transfer"
 
 
 class BillStatus(str, enum.Enum):
@@ -79,6 +87,29 @@ class MeetingType(str, enum.Enum):
     SGM = "SGM"  # Special General Meeting
     COMMITTEE = "committee"  # Legacy: Board of Committee meeting
     GENERAL_BODY = "general_body"  # Legacy: General Body meeting
+
+
+class AssetCategory(str, enum.Enum):
+    """Category of society assets"""
+    LIFT = "lift"
+    ELECTRICAL = "electrical"
+    PLUMBING = "plumbing"
+    FURNITURE = "furniture"
+    EQUIPMENT = "equipment"
+    INFRASTRUCTURE = "infrastructure"
+    OTHER = "other"
+
+
+class AcquisitionType(str, enum.Enum):
+    """How the asset was acquired"""
+    BUILDER_HANDOVER = "builder_handover"
+    SOCIETY_PURCHASE = "society_purchase"
+
+
+class DepreciationMethod(str, enum.Enum):
+    """Method used for depreciation"""
+    STRAIGHT_LINE = "straight_line"
+    WRITTEN_DOWN_VALUE = "written_down_value"
 
 
 # ============ SOCIETY MODEL (PRD: Multi-Tenancy) ============
@@ -519,8 +550,8 @@ class MaintenanceBill(Base):
     water_amount = Column(Numeric(18, 2), default=0.0, nullable=False)
     fixed_amount = Column(Numeric(18, 2), default=0.0, nullable=False)
     sinking_fund_amount = Column(Numeric(18, 2), default=0.0, nullable=False)
-    repair_fund_amount = Column(Numeric(18, 2), default=0.0, nullable=False)  # CR-021
-    corpus_fund_amount = Column(Numeric(18, 2), default=0.0, nullable=False)  # CR-021
+    repair_fund_amount = Column(Numeric(18, 2), default=0.0, nullable=False)
+    corpus_fund_amount = Column(Numeric(18, 2), default=0.0, nullable=False)
     arrears_amount = Column(Numeric(18, 2), default=0.0, nullable=False)
     late_fee_amount = Column(Numeric(18, 2), default=0.0, nullable=False)
     
@@ -599,7 +630,9 @@ class Transaction(Base):
     credit_amount = Column(Numeric(18, 2), default=0.0)  # Credit amount for this account
     journal_entry_id = Column(Integer, ForeignKey("journal_entries.id"), nullable=True, index=True)  # Link to journal entry if part of one
     payment_method = Column(String(20))  # 'cash' or 'bank'
+    is_reversed = Column(Boolean, default=False, index=True)
     vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=True, index=True) # Linked Vendor for AP
+    flat_id = Column(Integer, ForeignKey("flats.id"), nullable=True, index=True)  # Link to flat for flat-specific transactions
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -608,6 +641,53 @@ class Transaction(Base):
     added_by_user = relationship("User", back_populates="transactions")
     journal_entry = relationship("JournalEntry", back_populates="entries")
     vendor = relationship("Vendor", back_populates="transactions")
+    flat = relationship("Flat", backref="transactions")
+
+
+# ============ ASSET MODEL ============
+class Asset(Base):
+    """Representation of society assets (Common Property)"""
+    __tablename__ = "assets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    society_id = Column(Integer, ForeignKey("societies.id"), nullable=False, index=True)
+    asset_code = Column(String(50), nullable=True, index=True)  # AST-00045
+    account_code = Column(String(20), nullable=True, index=True) # Linked to Chart of Accounts
+    name = Column(String(100), nullable=False)
+    category = Column(Enum(AssetCategory), nullable=False)
+    quantity = Column(Integer, default=1)
+    location = Column(String(200), nullable=True)
+    status = Column(String(50), default="Active")  # Active, Under Maintenance, Scrapped
+    
+    # Acquisition details
+    acquisition_type = Column(Enum(AcquisitionType), nullable=False)
+    handover_date = Column(Date, nullable=True)
+    purchase_date = Column(Date, nullable=True)
+    original_cost = Column(Numeric(18, 2), nullable=False, default=0.0)
+    
+    # Financial/Depreciation
+    depreciation_method = Column(Enum(DepreciationMethod), default=DepreciationMethod.STRAIGHT_LINE)
+    depreciation_rate = Column(Numeric(5, 2), nullable=True)  # Percent
+    useful_life_years = Column(Integer, nullable=True)
+    residual_value = Column(Numeric(18, 2), default=1.0)
+    
+    # Maintenance & Insurance
+    amc_vendor = Column(String(100), nullable=True)
+    amc_expiry = Column(Date, nullable=True)
+    insurance_policy_no = Column(String(100), nullable=True)
+    insurance_expiry = Column(Date, nullable=True)
+    
+    # Additional Info
+    vendor_name = Column(String(100), nullable=True)
+    invoice_no = Column(String(50), nullable=True)
+    notes = Column(Text, nullable=True)
+    is_scrapped = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    society = relationship("Society")
 
 
 # ============ JOURNAL ENTRY MODEL ============
@@ -620,9 +700,14 @@ class JournalEntry(Base):
     date = Column(Date, nullable=False, index=True)
     expense_month = Column(String(50), nullable=True)  # Month this journal entry belongs to
     description = Column(Text, nullable=False)
+    received_from = Column(String(100), nullable=True) # Name for Receipt Vouchers
     total_debit = Column(Numeric(18, 2), nullable=False, default=0.0)
     total_credit = Column(Numeric(18, 2), nullable=False, default=0.0)
     is_balanced = Column(Boolean, default=False)  # True if debit = credit
+    voucher_type = Column(Enum(VoucherType), nullable=True)
+    is_reversed = Column(Boolean, default=False, index=True)
+    reversal_entry_id = Column(Integer, ForeignKey("journal_entries.id"), nullable=True)
+    original_entry_id = Column(Integer, ForeignKey("journal_entries.id"), nullable=True)
     added_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -631,6 +716,30 @@ class JournalEntry(Base):
     society = relationship("Society")
     creator = relationship("User")
     entries = relationship("Transaction", back_populates="journal_entry")
+    attachments = relationship("VoucherAttachment", back_populates="journal_entry", cascade="all, delete-orphan")
+
+
+# ============ VOUCHER ATTACHMENT MODEL ============
+class VoucherAttachment(Base):
+    """Attachments for accounting vouchers (SRS-025 Addendum)"""
+    __tablename__ = "voucher_attachments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    society_id = Column(Integer, ForeignKey("societies.id"), nullable=False, index=True)
+    journal_entry_id = Column(Integer, ForeignKey("journal_entries.id"), nullable=False, index=True)
+    
+    file_name = Column(String(255), nullable=False)
+    file_url = Column(String(500), nullable=False)  # Path to local file storage
+    file_size = Column(Integer, nullable=True)  # Size in bytes
+    mime_type = Column(String(100), nullable=True)  # e.g., 'application/pdf', 'image/jpeg'
+    
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    society = relationship("Society")
+    journal_entry = relationship("JournalEntry", back_populates="attachments")
+    uploader = relationship("User")
 
 
 # ============ ACCOUNT CODE MODEL ============
@@ -643,9 +752,11 @@ class AccountCode(Base):
     name = Column(String(100), nullable=False)
     type = Column(Enum(AccountType), nullable=False, index=True)
     description = Column(Text)
+    category = Column(String(100), nullable=True)
     opening_balance = Column(Numeric(18, 2), default=0, nullable=False)
     current_balance = Column(Numeric(18, 2), default=0, nullable=False)
     is_fixed_expense = Column(Boolean, default=False, nullable=False, index=True)  # If True, include in fixed expenses calculation for maintenance bills
+    utility_type = Column(String(50), nullable=True, index=True)  # e.g., 'water_tanker', 'water_municipal' for dynamic identification
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
@@ -684,6 +795,13 @@ class Message(Base):
 
     # Relationships
     room = relationship("ChatRoom", back_populates="messages")
+
+
+# ============ PERSONAL ARREARS STATUS ENUM ============
+class PersonalArrearsStatus(str, enum.Enum):
+    OPEN = "open"
+    PARTIALLY_SETTLED = "partially_settled"
+    CLOSED = "closed"
 
 
 # ============ VENDOR MODEL ============
@@ -753,6 +871,7 @@ class Member(Base):
     move_out_date = Column(Date, nullable=True, index=True)  # For moving out logic - members don't see records after this date
     status = Column(String(20), default="inactive", nullable=False, index=True)  # "active" or "inactive" - inactive until user claims profile
     clerk_user_id = Column(String(255), nullable=True, unique=True, index=True)  # Clerk user ID after profile is claimed
+    personal_account_code = Column(String(10), nullable=True, index=True)  # Link to Personal Arrears Ledger
     total_occupants = Column(Integer, default=1, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -821,6 +940,8 @@ class DocumentChecklist(Base):
     sale_deed_submitted_date = Column(Date, nullable=True)
     rental_agreement_status = Column(String(20), default="pending", nullable=False)
     rental_agreement_submitted_date = Column(Date, nullable=True)
+    police_verification_status = Column(String(20), default="pending", nullable=False)  # "pending" or "submitted"
+    police_verification_date = Column(Date, nullable=True)
     last_updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -1462,6 +1583,36 @@ class MembersArchive(Base):
     society = relationship("Society")
 
 
+# ============ PERSONAL ARREARS MODEL ============
+class PersonalArrears(Base):
+    """Tracks disputed/unpaid dues isolated from a flat and linked to an individual"""
+    __tablename__ = "personal_arrears"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    society_id = Column(Integer, ForeignKey("societies.id"), nullable=False, index=True)
+    member_id = Column(Integer, ForeignKey("members.id"), nullable=False, index=True)
+    flat_id = Column(Integer, ForeignKey("flats.id"), nullable=False, index=True)
+    
+    account_code = Column(String(10), nullable=False, index=True)  # The Personal Ledger code (e.g., 1201)
+    original_flat_balance = Column(Numeric(18, 2), nullable=False)
+    current_arrears_balance = Column(Numeric(18, 2), nullable=False)
+    waived_amount = Column(Numeric(18, 2), default=0.0)
+    
+    status = Column(Enum(PersonalArrearsStatus), default=PersonalArrearsStatus.OPEN, nullable=False, index=True)
+    transfer_date = Column(Date, default=datetime.utcnow().date(), nullable=False)
+    transfer_voucher_id = Column(Integer, ForeignKey("journal_entries.id"), nullable=True)
+    
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    society = relationship("Society")
+    member = relationship("Member")
+    flat = relationship("Flat")
+    transfer_voucher = relationship("JournalEntry")
+
+
 # ============================================================================
 # IMPORT NEW MODELS FROM SEPARATE FILES
 # ============================================================================
@@ -1506,6 +1657,10 @@ class ComplaintStatus(str, enum.Enum):
     RESOLVED = "resolved"
     CLOSED = "closed"
 
+class ComplaintScope(str, enum.Enum):
+    INDIVIDUAL = "individual"
+    COMMON_AREA = "common_area"
+
 class ComplaintType(str, enum.Enum):
     PLUMBING = "plumbing"
     ELECTRICAL = "electrical"
@@ -1528,6 +1683,7 @@ class Complaint(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # Author
     
     type = Column(Enum(ComplaintType), nullable=False, default=ComplaintType.OTHER)
+    scope = Column(Enum(ComplaintScope), nullable=False, default=ComplaintScope.INDIVIDUAL)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=False)
     status = Column(Enum(ComplaintStatus), default=ComplaintStatus.OPEN, nullable=False)

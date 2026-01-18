@@ -63,7 +63,7 @@ module.exports = {
     }),
   ],
   devServer: {
-    port: 3001,
+    port: 3006,
     host: 'localhost',
     hot: true,
     open: ['/'],
@@ -92,7 +92,7 @@ module.exports = {
       progress: true,
       logging: 'info',
     },
-    onListening: function(devServer) {
+    onListening: function (devServer) {
       if (!devServer) {
         throw new Error('webpack-dev-server is not defined');
       }

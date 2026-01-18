@@ -1,0 +1,151 @@
+Below is a **standard, auditor-friendly Balance Sheet format for an Indian Housing Society / Apartment Owners Association**, exactly how it is usually presented under **Societies Act / Co-operative Societies Act** and accepted by auditors.
+
+This is the **right reference format for GharMitra**.
+
+---
+
+# 🧾 Balance Sheet
+
+**ABC Apartment Owners Welfare Association**
+As at **31 March 2025**
+
+---
+
+## 🟩 LIABILITIES
+
+### **A. Capital & Funds**
+
+| Particulars                           | Amount (₹)    |
+| ------------------------------------- | ------------- |
+| Members’ Contribution / Share Capital | 5,00,000      |
+| General Reserve                       | 3,50,000      |
+| Sinking Fund                          | 12,00,000     |
+| Repair & Maintenance Fund             | 8,50,000      |
+| Major Repair Fund                     | 6,00,000      |
+| Other Specific Funds                  | 2,00,000      |
+| **Total Funds**                       | **37,00,000** |
+
+---
+
+### **B. Current Liabilities & Provisions**
+
+| Particulars                             | Amount (₹)   |
+| --------------------------------------- | ------------ |
+| Maintenance Charges Received in Advance | 1,80,000     |
+| Outstanding Expenses Payable            | 95,000       |
+| Audit Fees Payable                      | 40,000       |
+| Electricity Charges Payable             | 1,10,000     |
+| Other Payables                          | 75,000       |
+| **Total Current Liabilities**           | **5,00,000** |
+
+---
+
+### **TOTAL LIABILITIES**
+
+### **₹ 42,00,000**
+
+---
+
+## 🟦 ASSETS
+
+### **A. Fixed Assets**
+
+| Particulars                      | Amount (₹)    |
+| -------------------------------- | ------------- |
+| Building (if owned by society)   | 10,00,000     |
+| Lifts                            | 5,50,000      |
+| Generator / Electrical Equipment | 3,20,000      |
+| Furniture & Fixtures             | 1,10,000      |
+| Less: Accumulated Depreciation   | (2,80,000)    |
+| **Net Fixed Assets**             | **17,00,000** |
+
+---
+
+### **B. Investments**
+
+| Particulars                   | Amount (₹)    |
+| ----------------------------- | ------------- |
+| Fixed Deposits (Sinking Fund) | 12,00,000     |
+| Fixed Deposits (Other Funds)  | 4,50,000      |
+| **Total Investments**         | **16,50,000** |
+
+---
+
+### **C. Current Assets**
+
+| Particulars                    | Amount (₹)   |
+| ------------------------------ | ------------ |
+| Cash in Hand                   | 35,000       |
+| Bank Balance – Savings Account | 5,20,000     |
+| Maintenance Receivable         | 1,80,000     |
+| Other Receivables              | 1,15,000     |
+| **Total Current Assets**       | **8,50,000** |
+
+---
+
+### **TOTAL ASSETS**
+
+### **₹ 42,00,000**
+
+---
+
+## ✅ Accounting Checks (VERY IMPORTANT)
+
+✔ **Assets = Liabilities**
+✔ All **Funds are backed by bank FD / cash**
+✔ No income or expense appears in Balance Sheet
+✔ Member-wise dues shown under *Receivables*
+
+---
+
+## 🧠 How This Maps Perfectly into **GharMitra**
+
+### 🔹 Funds → Liability Accounts
+
+* Sinking Fund
+* Repair Fund
+* Major Repair Fund
+
+(each must have **separate ledger + bank FD mapping**)
+
+---
+
+### 🔹 Member Dues
+
+* Appear as **Maintenance Receivable**
+* Member ledger total = Balance Sheet figure
+  *(this is a MUST-check rule in your system)*
+
+---
+
+### 🔹 Cash & Bank
+
+* Bank balances must match:
+
+  * Savings account statement
+  * FD balances (with maturity mapping)
+
+---
+
+## ⚠️ Common Mistakes to Avoid (Important for Software Design)
+
+❌ Showing income surplus directly as “Profit”
+❌ Mixing fund balances with bank balances
+❌ Allowing vouchers without fund tagging
+❌ Trial balance matching but Balance Sheet wrong (dangerous)
+
+---
+
+## 🟢 Verdict (Founder + Auditor Safe)
+
+> This format is **100% acceptable** to:
+
+* Society auditors
+* AGM presentation
+* Registrar filings
+* Bank loan / FD verification
+
+This is the **exact structure GharMitra should auto-generate**.
+
+---
+

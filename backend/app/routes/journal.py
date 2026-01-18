@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from app.database import get_db
 from app.models.journal import JournalEntryCreate, JournalEntryResponse, TrialBalanceResponse, TrialBalanceItem, JournalEntryLine
 from app.models.user import UserResponse
-from app.models_db import JournalEntry, Transaction, AccountCode
+from app.models_db import JournalEntry, Transaction, AccountCode, VoucherType
 from app.dependencies import get_current_user, get_current_accountant_user
 from app.utils.document_numbering import generate_journal_entry_number
 
@@ -372,6 +372,7 @@ async def get_journal_entry(
 @router.post("/{entry_id}/reverse", response_model=JournalEntryResponse)
 async def reverse_journal_entry(
     entry_id: int,
+    reason: Optional[str] = Query(None, description="Reason for reversal"),
     current_user: UserResponse = Depends(get_current_accountant_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -397,18 +398,51 @@ async def reverse_journal_entry(
     original_txns = result.scalars().all()
 
     # 3. Create reversal entry
-    today = date.today()
-    entry_number = await generate_journal_entry_number(db, current_user.society_id, today)
+    reversal_date = date.today()
     
+    # Custom Numbering: Append "-R" to original number
+    base_num = original.entry_number
+    # Remove existing -R suffix if present to avoid -R-R
+    if base_num.endswith("-R"):
+        base_num = base_num[:-2]
+    
+    candidate_num = f"{base_num}-R"
+    
+    # Check for existence of candidate_num (and increment if needed: -R2, -R3...)
+    # We do a simple loop to find a free suffix
+    suffix_idx = 1
+    while True:
+        entry_check = await db.execute(
+            select(JournalEntry).where(
+                JournalEntry.entry_number == candidate_num,
+                JournalEntry.society_id == current_user.society_id
+            )
+        )
+        if not entry_check.scalar_one_or_none():
+            break
+        # If exists, try next index
+        suffix_idx += 1
+        candidate_num = f"{base_num}-R{suffix_idx}"
+    
+    entry_number = candidate_num
+    
+    desc_prefix = f"REVERSAL of {original.entry_number}"
+    if reason:
+        full_description = f"{desc_prefix}: {reason} (Original: {original.description})"
+    else:
+        full_description = f"{desc_prefix}: {original.description}"
+
     new_entry = JournalEntry(
         society_id=current_user.society_id,
         entry_number=entry_number,
-        date=today,
+        date=reversal_date,
         expense_month=original.expense_month,
-        description=f"REVERSAL of {original.entry_number}: {original.description}",
+        description=full_description,
         total_debit=original.total_credit,
         total_credit=original.total_debit,
         is_balanced=original.is_balanced,
+        voucher_type=VoucherType.JOURNAL,
+        original_entry_id=original.id,
         added_by=int(current_user.id),
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
@@ -416,6 +450,11 @@ async def reverse_journal_entry(
     
     db.add(new_entry)
     await db.flush()
+
+    # Mark original as reversed
+    original.is_reversed = True
+    original.reversal_entry_id = new_entry.id
+    db.add(original)
 
     # 4. Create reversed transactions and update balances
     new_txns = []
@@ -458,6 +497,10 @@ async def reverse_journal_entry(
             updated_at=datetime.utcnow()
         )
         new_txns.append(new_txn)
+        
+        # Mark original transaction as reversed
+        t.is_reversed = True
+        db.add(t)
     
     db.add_all(new_txns)
     await db.commit()
