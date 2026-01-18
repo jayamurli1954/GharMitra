@@ -1139,26 +1139,60 @@ class PDFExporter:
         elements = []
         styles = getSampleStyleSheet()
         
+        # Format date - handle both string and date objects
+        as_on_date = report_data.get('as_on_date', '')
+        if hasattr(as_on_date, 'strftime'):
+            # It's a date object
+            as_on_date_str = as_on_date.strftime('%d-%m-%Y')
+        elif isinstance(as_on_date, str):
+            # It's already a string, try to format it
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(as_on_date, '%Y-%m-%d').date()
+                as_on_date_str = date_obj.strftime('%d-%m-%Y')
+            except:
+                as_on_date_str = str(as_on_date)
+        else:
+            as_on_date_str = str(as_on_date)
+        
         # Header
         elements.append(Paragraph(society_info.get('name', 'Society Name'), styles['Title']))
-        elements.append(Paragraph(f"TRIAL BALANCE AS ON {report_data.get('as_on_date', '')}", styles['Heading2']))
+        elements.append(Paragraph(f"TRIAL BALANCE AS ON {as_on_date_str}", styles['Heading2']))
         elements.append(Spacer(1, 0.2*inch))
         
-        # Table data
-        table_data = [['Account Code', 'Account Name', 'Debit Balance', 'Credit Balance']]
-        for item in report_data.get('items', []):
+        # Table data - Use "Rs." in headers and totals only, not in line items
+        table_data = [['Account Code', 'Account Name', 'Debit Balance (Rs.)', 'Credit Balance (Rs.)']]
+        items = report_data.get('items', [])
+        for item in items:
+            # Handle both dict and Pydantic model
+            if hasattr(item, 'account_code'):
+                # It's a Pydantic model
+                account_code = item.account_code
+                account_name = item.account_name
+                debit_balance = item.debit_balance
+                credit_balance = item.credit_balance
+            else:
+                # It's a dict
+                account_code = item.get('account_code', '')
+                account_name = item.get('account_name', '')
+                debit_balance = item.get('debit_balance', 0)
+                credit_balance = item.get('credit_balance', 0)
+            
+            # Line items: No currency symbol, just numbers
             table_data.append([
-                item.get('account_code', ''),
-                item.get('account_name', ''),
-                f"₹{item.get('debit_balance', 0):,.2f}" if item.get('debit_balance', 0) > 0 else '-',
-                f"₹{item.get('credit_balance', 0):,.2f}" if item.get('credit_balance', 0) > 0 else '-'
+                account_code,
+                account_name,
+                f"{debit_balance:,.2f}" if debit_balance > 0 else '-',
+                f"{credit_balance:,.2f}" if credit_balance > 0 else '-'
             ])
             
-        # Total row
+        # Total row - Include "Rs." symbol
+        total_debit = report_data.get('total_debit', 0)
+        total_credit = report_data.get('total_credit', 0)
         table_data.append([
             '', 'TOTAL',
-            f"₹{report_data.get('total_debit', 0):,.2f}",
-            f"₹{report_data.get('total_credit', 0):,.2f}"
+            f"Rs. {total_debit:,.2f}",
+            f"Rs. {total_credit:,.2f}"
         ])
         
         table = Table(table_data, colWidths=[1*inch, 3*inch, 1.25*inch, 1.25*inch])
@@ -1194,7 +1228,7 @@ class PDFExporter:
         
         # Summary Row (Income vs Expenditure)
         summary_data = [
-            [f"Total Income: ₹{report_data.get('total_income', 0):,.2f}", f"Total Expenditure: ₹{report_data.get('total_expenditure', 0):,.2f}"]
+            [f"Total Income: Rs. {report_data.get('total_income', 0):,.2f}", f"Total Expenditure: Rs. {report_data.get('total_expenditure', 0):,.2f}"]
         ]
         summary_table = Table(summary_data, colWidths=[3.25*inch, 3.25*inch])
         summary_table.setStyle(TableStyle([
@@ -1210,14 +1244,14 @@ class PDFExporter:
         
         # Net Surplus/Deficit
         net_income = report_data.get('net_income', 0)
-        net_text = f"NET SURPLUS: ₹{net_income:,.2f}" if net_income >= 0 else f"NET DEFICIT: ₹{abs(net_income):,.2f}"
+        net_text = f"NET SURPLUS: Rs. {net_income:,.2f}" if net_income >= 0 else f"NET DEFICIT: Rs. {abs(net_income):,.2f}"
         net_color = colors.HexColor('#2e7d32') if net_income >= 0 else colors.HexColor('#c62828')
         elements.append(Paragraph(f"<b>{net_text}</b>", ParagraphStyle('NetStyle', parent=styles['Normal'], fontSize=14, textColor=net_color, alignment=TA_CENTER)))
         elements.append(Spacer(1, 0.3*inch))
         
         # Details (Income)
         elements.append(Paragraph("<b>INCOME DETAILS</b>", styles['Heading3']))
-        income_data = [['Account Code', 'Account Name', 'Amount (₹)']]
+        income_data = [['Account Code', 'Account Name', 'Amount (Rs.)']]
         for item in report_data.get('income_items', []):
             income_data.append([item.get('account_code', ''), item.get('account_name', ''), f"{item.get('amount', 0):,.2f}"])
         
@@ -1236,7 +1270,7 @@ class PDFExporter:
         
         # Details (Expenditure)
         elements.append(Paragraph("<b>EXPENDITURE DETAILS</b>", styles['Heading3']))
-        exp_data = [['Account Code', 'Account Name', 'Amount (₹)']]
+        exp_data = [['Account Code', 'Account Name', 'Amount (Rs.)']]
         for item in report_data.get('expenditure_items', []):
             exp_data.append([item.get('account_code', ''), item.get('account_name', ''), f"{item.get('amount', 0):,.2f}"])
             
@@ -1273,8 +1307,9 @@ class PDFExporter:
         
         # Assets Table
         elements.append(Paragraph("<b>ASSETS</b>", styles['Heading3']))
-        asset_data = [['Account Name', 'Amount (₹)']]
+        asset_data = [['Account Name', 'Amount (Rs.)']]
         for item in report_data.get('assets', []):
+            # Line items: No currency symbol, just numbers
             asset_data.append([item.get('account_name', ''), f"{item.get('balance', 0):,.2f}"])
         
         asset_table = Table(asset_data, colWidths=[5*inch, 1.5*inch])
@@ -1284,15 +1319,17 @@ class PDFExporter:
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
         ]))
         elements.append(asset_table)
-        elements.append(Paragraph(f"<b>Total Assets: ₹{report_data.get('total_assets', 0):,.2f}</b>", ParagraphStyle('TotalStyle', parent=styles['Normal'], alignment=TA_RIGHT)))
+        # Total: Include "Rs." symbol
+        elements.append(Paragraph(f"<b>Total Assets: Rs. {report_data.get('total_assets', 0):,.2f}</b>", ParagraphStyle('TotalStyle', parent=styles['Normal'], alignment=TA_RIGHT)))
         elements.append(Spacer(1, 0.3*inch))
         
         # Liabilities & Capital Table
         elements.append(Paragraph("<b>LIABILITIES & CAPITAL</b>", styles['Heading3']))
-        liab_data = [['Account Name', 'Amount (₹)']]
+        liab_data = [['Account Name', 'Amount (Rs.)']]
         # Combine Liabilities and Capital
         all_liab = report_data.get('liabilities', []) + report_data.get('capital', [])
         for item in all_liab:
+            # Line items: No currency symbol, just numbers
             liab_data.append([item.get('account_name', ''), f"{item.get('balance', 0):,.2f}"])
             
         liab_table = Table(liab_data, colWidths=[5*inch, 1.5*inch])
@@ -1302,7 +1339,8 @@ class PDFExporter:
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
         ]))
         elements.append(liab_table)
-        elements.append(Paragraph(f"<b>Total Liabilities & Capital: ₹{report_data.get('total_liabilities_capital', 0):,.2f}</b>", ParagraphStyle('TotalStyle', parent=styles['Normal'], alignment=TA_RIGHT)))
+        # Total: Include "Rs." symbol
+        elements.append(Paragraph(f"<b>Total Liabilities & Capital: Rs. {report_data.get('total_liabilities_capital', 0):,.2f}</b>", ParagraphStyle('TotalStyle', parent=styles['Normal'], alignment=TA_RIGHT)))
         
         doc.build(elements)
         buffer.seek(0)
