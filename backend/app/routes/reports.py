@@ -1115,6 +1115,20 @@ async def member_dues_report(
     result = await db.execute(select(Flat).order_by(Flat.flat_number))
     flats = result.scalars().all()
 
+    # Get all Users to map to flats (fallback for owner name)
+    # Filter for residents/members
+    from app.models_db import User
+    result_users = await db.execute(select(User).where(User.role == UserRole.RESIDENT))
+    users = result_users.scalars().all()
+    
+    # Create a map of Flat Number -> User Name (first one found)
+    flat_user_map = {}
+    for user in users:
+        # Normalize: Remove "Flat " prefix if exists to match flat_number
+        clean_apt = user.apartment_number.replace("Flat ", "").replace("flat ", "").strip()
+        if clean_apt not in flat_user_map:
+            flat_user_map[clean_apt] = user.name
+
     dues_report = []
     total_outstanding = Decimal("0.00")
 
@@ -1178,7 +1192,7 @@ async def member_dues_report(
 
         dues_report.append({
             "flat_number": flat.flat_number,
-            "owner_name": flat.owner_name,
+            "owner_name": flat.owner_name or flat_user_map.get(flat.flat_number, "Unknown"),
             "outstanding_bills": len(unpaid_bills),
             "outstanding_amount": float(outstanding_amount),
             "last_payment": last_payment_date.isoformat() if last_payment_date else "Never",
