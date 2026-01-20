@@ -49,3 +49,8 @@ aiosmtplib==3.0.1
 
 # Optional: WebSockets for real-time features
 websockets==12.0
+
+# Production
+gunicorn==21.2.0
+psycopg2-binary==2.9.9
+alembic==1.13.1

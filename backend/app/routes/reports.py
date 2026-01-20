@@ -1111,21 +1111,79 @@ async def member_dues_report(
     )
     if not has_permission:
         pass
-    # Get all flats
-    result = await db.execute(select(Flat).order_by(Flat.flat_number))
-    flats = result.scalars().all()
+    # Get all members for flats - this is the MASTER table with flat_id and name
+    from app.models_db import Member
+    # Filter by society_id to match user's society
+    society_id = current_user.society_id
+    
+    # Get ALL members for this society - SIMPLE query without join (more reliable)
+    # Order by: primary first, then active, then by creation date
+    result_all_members = await db.execute(
+        select(Member)
+        .where(Member.society_id == society_id)
+        .order_by(
+            Member.is_primary.desc(),  # Primary members first
+            case((Member.status == "active", 0), else_=1),  # Active members first
+            Member.created_at.desc()  # Most recent first
+        )
+    )
+    all_members = result_all_members.scalars().all()
 
-    # Get all Users to map to flats (fallback for owner name)
-    # Filter for residents/members
+    # Create a map of Flat ID -> Member Name
+    # Use the first member found for each flat (prioritized by query order above)
+    # IMPORTANT: Ensure flat_id is an integer for proper matching
+    flat_member_map = {}
+    for member in all_members:
+        if member.flat_id and member.name:
+            # Convert to int to ensure type consistency
+            flat_id_key = int(member.flat_id) if member.flat_id else None
+            if flat_id_key and flat_id_key not in flat_member_map:
+                flat_member_map[flat_id_key] = member.name
+                logger.info(f"Mapped: flat_id={flat_id_key} (type: {type(flat_id_key).__name__}) -> name={member.name}")
+            elif flat_id_key:
+                logger.debug(f"Skipping duplicate: flat_id={flat_id_key}, already mapped to {flat_member_map[flat_id_key]}")
+    
+    # Log for debugging
+    logger.info(f"Member Dues Report: Found {len(all_members)} total members, mapped {len(flat_member_map)} flats with member names")
+    if len(all_members) > 0:
+        logger.info(f"Member Dues Report: Sample members - first 5: {[(m.flat_id, m.name, m.status, m.is_primary) for m in all_members[:5]]}")
+    logger.info(f"Member Dues Report: flat_member_map flat_ids: {sorted(list(flat_member_map.keys()))}")
+    if len(flat_member_map) == 0:
+        logger.warning(f"Member Dues Report: No member names found for society_id={society_id}!")
+        # Try to get count of members in database
+        result_count = await db.execute(select(func.count(Member.id)).where(Member.society_id == society_id))
+        member_count = result_count.scalar() or 0
+        logger.warning(f"Member Dues Report: Total members in database for society_id={society_id}: {member_count}")
+        # Also check if there are any members at all
+        result_all = await db.execute(select(func.count(Member.id)))
+        total_members = result_all.scalar() or 0
+        logger.warning(f"Member Dues Report: Total members in entire database: {total_members}")
+
+    # Get all flats for this society (for iteration)
+    result_flats = await db.execute(
+        select(Flat)
+        .where(Flat.society_id == society_id)
+        .order_by(Flat.flat_number)
+    )
+    flats = result_flats.scalars().all()
+
+    # Get all Users to map to flats (fallback for owner name if no member found)
+    # Filter for residents/members of this society
     from app.models_db import User
-    result_users = await db.execute(select(User).where(User.role == UserRole.RESIDENT))
+    result_users = await db.execute(
+        select(User)
+        .where(and_(
+            User.role == UserRole.RESIDENT,
+            User.society_id == society_id
+        ))
+    )
     users = result_users.scalars().all()
     
     # Create a map of Flat Number -> User Name (first one found)
     flat_user_map = {}
     for user in users:
-        # Normalize: Remove "Flat " prefix if exists to match flat_number
-        clean_apt = user.apartment_number.replace("Flat ", "").replace("flat ", "").strip()
+        # Normalize: Remove "Flat " prefix, strip, and uppercase
+        clean_apt = user.apartment_number.replace("Flat ", "").replace("flat ", "").strip().upper()
         if clean_apt not in flat_user_map:
             flat_user_map[clean_apt] = user.name
 
@@ -1190,9 +1248,62 @@ async def member_dues_report(
         )
         last_payment_date = last_payment_result.scalar()
 
+        # Get member name: Priority 1) Member table (MASTER - members are onboarded here), 2) Flat owner_name, 3) User table, 4) Unknown
+        # The members table is the MASTER table where names are stored against flat_id
+        member_name = "Unknown"
+        
+        # Ensure flat.id is an integer for proper matching
+        flat_id_int = int(flat.id) if flat.id else None
+        
+        # Priority 1: Try the pre-built map first (fastest)
+        if flat_id_int and flat_id_int in flat_member_map:
+            member_name = flat_member_map[flat_id_int]
+            logger.info(f"✓ Flat {flat.flat_number} (ID: {flat_id_int}, type: {type(flat_id_int).__name__}): Found in map -> {member_name}")
+        else:
+            # If not in map, query directly from Member table
+            logger.warning(f"⚠ Flat {flat.flat_number} (ID: {flat_id_int}, type: {type(flat_id_int).__name__}): NOT in map (map has keys: {list(flat_member_map.keys())[:5]}), querying directly...")
+            try:
+                direct_member_result = await db.execute(
+                    select(Member.name)
+                    .where(
+                        and_(
+                            Member.flat_id == flat_id_int,
+                            Member.society_id == society_id
+                        )
+                    )
+                    .order_by(Member.is_primary.desc(), Member.created_at.desc())
+                    .limit(1)
+                )
+                direct_member = direct_member_result.scalar_one_or_none()
+                if direct_member:
+                    member_name = direct_member
+                    logger.info(f"✓ Flat {flat.flat_number} (ID: {flat_id_int}): Found via direct query -> {member_name}")
+                else:
+                    logger.warning(f"✗ Flat {flat.flat_number} (ID: {flat_id_int}): Direct query returned None")
+            except Exception as e:
+                logger.error(f"✗ Error querying member for flat {flat.flat_number} (ID: {flat_id_int}): {e}", exc_info=True)
+        
+        # Priority 2: Use flat.owner_name as fallback (legacy data)
+        if member_name == "Unknown" and flat.owner_name:
+            member_name = flat.owner_name
+            logger.info(f"→ Flat {flat.flat_number}: Using flat.owner_name -> {member_name}")
+        # Priority 3: Try User table mapping
+        elif member_name == "Unknown":
+            flat_num_norm = flat.flat_number.strip().upper()
+            if flat_num_norm in flat_user_map:
+                member_name = flat_user_map[flat_num_norm]
+                logger.info(f"→ Flat {flat.flat_number}: Using User table -> {member_name}")
+            else:
+                logger.warning(f"✗ Flat {flat.flat_number} (ID: {flat.id}): All lookups failed, using 'Unknown'")
+
+        # Final check - log what we're actually setting
+        if member_name == "Unknown":
+            logger.warning(f"⚠⚠⚠ Flat {flat.flat_number} (ID: {flat.id}): FINAL member_name is 'Unknown'! Map has {len(flat_member_map)} entries, flat.id={flat.id}, map keys={list(flat_member_map.keys())[:5]}")
+        
         dues_report.append({
             "flat_number": flat.flat_number,
-            "owner_name": flat.owner_name or flat_user_map.get(flat.flat_number, "Unknown"),
+            "owner_name": member_name,
+            "member_name": member_name,  # Also include as member_name for frontend compatibility
             "outstanding_bills": len(unpaid_bills),
             "outstanding_amount": float(outstanding_amount),
             "last_payment": last_payment_date.isoformat() if last_payment_date else "Never",

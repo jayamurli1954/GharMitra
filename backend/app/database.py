@@ -22,6 +22,7 @@ async def perform_automated_backup():
         # Get DB path from settings (e.g., sqlite+aiosqlite:///./gharmitra.db)
         db_url = settings.DATABASE_URL
         if "sqlite" not in db_url:
+            logger.info("  ℹ Automated backup skipped (not using SQLite)")
             return
 
         db_path = db_url.split("///")[-1]
@@ -99,27 +100,31 @@ def import_models():
 async def init_db():
     """Initialize database - create all tables and run migrations"""
     try:
-        # 0. Perform automated backup before any operations
+        # 0. Perform automated backup before any operations (SQLite only)
         await perform_automated_backup()
         
-        # 1. Enable WAL mode for crash resilience and optimize settings
-        async with engine.connect() as conn:
-            await conn.execute(text("PRAGMA journal_mode=WAL"))
-            await conn.execute(text("PRAGMA synchronous=NORMAL"))
+        # 1. Database optimizations
+        if "sqlite" in settings.DATABASE_URL:
+             # Enable WAL mode for crash resilience and optimize settings
+            async with engine.connect() as conn:
+                await conn.execute(text("PRAGMA journal_mode=WAL"))
+                await conn.execute(text("PRAGMA synchronous=NORMAL"))
 
-            # Additional optimizations for corruption prevention
-            await conn.execute(text("PRAGMA wal_autocheckpoint=1000"))  # Checkpoint every 1000 pages
-            await conn.execute(text("PRAGMA cache_size=-8000"))  # 8MB cache (better performance)
-            await conn.execute(text("PRAGMA temp_store=MEMORY"))  # Use memory for temp tables
-            await conn.execute(text("PRAGMA foreign_keys=ON"))  # Enable foreign key constraints
-            await conn.execute(text("PRAGMA optimize"))  # Optimize the database
+                # Additional optimizations for corruption prevention
+                await conn.execute(text("PRAGMA wal_autocheckpoint=1000"))  # Checkpoint every 1000 pages
+                await conn.execute(text("PRAGMA cache_size=-8000"))  # 8MB cache (better performance)
+                await conn.execute(text("PRAGMA temp_store=MEMORY"))  # Use memory for temp tables
+                await conn.execute(text("PRAGMA foreign_keys=ON"))  # Enable foreign key constraints
+                await conn.execute(text("PRAGMA optimize"))  # Optimize the database
 
-            # Run initial checkpoint
-            await conn.execute(text("PRAGMA wal_checkpoint(PASSIVE)"))
-            await conn.execute(text("PRAGMA analysis_limit=1000"))  # Limit for query analysis
-            await conn.execute(text("PRAGMA automatic_index=ON"))  # Enable automatic indexing
+                # Run initial checkpoint
+                await conn.execute(text("PRAGMA wal_checkpoint(PASSIVE)"))
+                await conn.execute(text("PRAGMA analysis_limit=1000"))  # Limit for query analysis
+                await conn.execute(text("PRAGMA automatic_index=ON"))  # Enable automatic indexing
 
-            logger.info("  ✓ SQLite WAL mode enabled with optimizations")
+                logger.info("  ✓ SQLite WAL mode enabled with optimizations")
+        else:
+             logger.info(f"  ✓ Connected to database: {settings.DATABASE_URL.split('@')[-1]}")
 
         # Import models first to register them
         import_models()

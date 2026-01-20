@@ -1251,11 +1251,15 @@ const ReceiptVoucherTab = () => {
 
             <SearchableSelect
               label="Flat (For Auto-Allocation)"
-              options={flats.map(f => ({ ...f, displayName: `${f.flat_number} - ${f.owner_name || 'No Owner'}` }))}
+              options={flats.map(f => ({
+                ...f,
+                id: String(f.id || f._id || ''),
+                displayName: `${f.flat_number} - ${f.owner_name || 'No Owner'}`
+              }))}
               value={formData.flat_id}
               onChange={(val) => {
                 console.log('Selected Flat:', val);
-                const flat = flats.find(f => f.id === val);
+                const flat = flats.find(f => String(f.id || f._id) === String(val));
                 setFormData(prev => ({
                   ...prev,
                   flat_id: val,
@@ -1688,7 +1692,11 @@ const PaymentVoucherTab = () => {
             />
             <SearchableSelect
               label="Flat (Optional tracking)"
-              options={flats.map(f => ({ ...f, displayName: `${f.flat_number} - ${f.owner_name || 'No Owner'}` }))}
+              options={flats.map(f => ({
+                ...f,
+                id: String(f.id || f._id || ''),
+                displayName: `${f.flat_number} - ${f.owner_name || 'No Owner'}`
+              }))}
               value={formData.flat_id}
               onChange={(val) => setFormData(prev => ({ ...prev, flat_id: val }))}
               placeholder="Search flat number or owner..."
@@ -2099,7 +2107,11 @@ const JournalVoucherTab = () => {
                       <td>
                         <SearchableSelect
                           label=""
-                          options={flats.map(f => ({ ...f, displayName: f.flat_number }))}
+                          options={flats.map(f => ({
+                            ...f,
+                            id: String(f.id || f._id || ''),
+                            displayName: f.flat_number
+                          }))}
                           value={entry.flat_id}
                           onChange={(val) => handleEntryChange(idx, 'flat_id', val)}
                           placeholder="Flat"
@@ -2852,13 +2864,13 @@ const ReportsTab = () => {
         {reportData && selectedReport === 'balance-sheet' && (() => {
           const isBalanced = reportData.is_balanced !== false;
           const formatCurrency = (amount) => `₹${(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-          
+
           return (
             <div className="settings-section" style={{ marginTop: '30px' }}>
               <h3 style={{ textAlign: 'center', marginBottom: '20px' }}>
                 Balance Sheet as on {reportData.as_on_date || reportParams.as_on_date}
               </h3>
-              
+
               {/* Balance Check Message */}
               {isBalanced ? (
                 <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#d4edda', borderRadius: '8px', color: '#155724', textAlign: 'center' }}>
@@ -2876,7 +2888,7 @@ const ReportsTab = () => {
                   <h4 style={{ color: '#FF3B30', marginBottom: '15px', borderBottom: '3px solid #FF3B30', paddingBottom: '8px', fontSize: '18px', fontWeight: 'bold' }}>
                     🟩 LIABILITIES
                   </h4>
-                  
+
                   {/* A. Capital & Funds */}
                   <div style={{ marginBottom: '20px' }}>
                     <h5 style={{ marginBottom: '10px', fontWeight: 'bold', color: '#333' }}>A. Capital & Funds</h5>
@@ -2963,7 +2975,7 @@ const ReportsTab = () => {
                   <h4 style={{ color: '#007AFF', marginBottom: '15px', borderBottom: '3px solid #007AFF', paddingBottom: '8px', fontSize: '18px', fontWeight: 'bold' }}>
                     🟦 ASSETS
                   </h4>
-                  
+
                   {/* A. Fixed Assets */}
                   <div style={{ marginBottom: '20px' }}>
                     <h5 style={{ marginBottom: '10px', fontWeight: 'bold', color: '#333' }}>A. Fixed Assets</h5>

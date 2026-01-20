@@ -7,21 +7,23 @@ import storage from '../utils/storage';
 
 // Determine API URL based on environment
 const getApiUrl = () => {
-  // TEMPORARY: Use port 8002 until the old backend on 8001 is killed
-  // TODO: Change back to 8001 after system restart
-  const TEMP_PORT = '8001';  // Matches active backend
-
   // Check if running in Electron
   if (typeof window !== 'undefined' && window.electron && window.electron.isDesktop) {
-    return `http://localhost:${TEMP_PORT}/api`;
+    return 'http://localhost:8001/api';
   }
-  // Check environment variable (webpack will replace this at build time)
-  // Use window.__API_URL__ if set, otherwise use default
+
+  // Production / Building for Cloud (Priority 1)
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+
+  // Runtime Environment Variable injection (Priority 2)
   if (typeof window !== 'undefined' && window.__API_URL__) {
     return window.__API_URL__;
   }
-  // Fallback to default API URL
-  return `http://localhost:${TEMP_PORT}/api`;
+
+  // Local Development Fallback
+  return 'http://localhost:8001/api';
 };
 
 // Create axios instance
