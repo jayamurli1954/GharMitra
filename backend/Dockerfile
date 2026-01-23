@@ -2,17 +2,22 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Verify Python version
+RUN python --version
+
+# Install system dependencies needed for Python packages
 RUN apt-get update && apt-get install -y \
     build-essential \
+    libpq-dev \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
 # Upgrade pip and install Python dependencies
+# Prefer binary wheels but allow source builds if needed
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install --only-binary :all: -r requirements.txt || \
     pip install --prefer-binary -r requirements.txt
 
 # Copy application code
