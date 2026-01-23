@@ -12,6 +12,7 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.2
 pydantic[email]==2.10.4
+pydantic-core==2.27.1  # Explicit pin for Python 3.13 compatibility
 # Upgraded to 2.10.4 for better Python 3.11/3.13 compatibility
 cryptography==42.0.0  # For encryption utilities (Fernet)
 
