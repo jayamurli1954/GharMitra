@@ -12,6 +12,7 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.2
 pydantic[email]==2.5.3
+# Pin to 2.5.3 which has stable wheels for Python 3.11
 cryptography==42.0.0  # For encryption utilities (Fernet)
 
 # Environment & Configuration
