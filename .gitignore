@@ -52,5 +52,6 @@ INSTALL_*.ps1
 debug_*.py
 test_*.py
 audit_*.py
-n u l  
- b a c k e n d / n u l  
+nul
+backend/nul
+**/nul

@@ -73,11 +73,23 @@ async def perform_automated_backup():
     except Exception as e:
         logger.warning(f"  ⚠ Automated backup failed: {e}")
 
-# Create async engine for SQLite
+# Create async engine - supports both SQLite and PostgreSQL
+# Convert postgresql:// to postgresql+asyncpg:// for async operations
+database_url = settings.DATABASE_URL
+if database_url.startswith("postgresql://") and "+asyncpg" not in database_url:
+    database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif database_url.startswith("postgresql+psycopg2://"):
+    # Convert psycopg2 to asyncpg for async operations
+    database_url = database_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    database_url,
     echo=settings.DATABASE_ECHO,
     future=True,
+    # PostgreSQL-specific connection pool settings
+    pool_pre_ping=True if "postgresql" in database_url else False,
+    pool_size=10 if "postgresql" in database_url else None,
+    max_overflow=20 if "postgresql" in database_url else None,
 )
 
 # Create async session factory
