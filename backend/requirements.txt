@@ -1,63 +1,64 @@
-# Core Framework (rebuilt 2026-01-24)
+# =========================
+# Core framework
+# =========================
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
 
-# Database
+# =========================
+# Database (ASYNC ONLY)
+# =========================
 sqlalchemy==2.0.25
-aiosqlite==0.19.0
+asyncpg==0.29.0
 
-# Authentication & Security
+# =========================
+# Auth & Security
+# =========================
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.2
-pydantic[email]==2.10.4
-pydantic-core==2.27.1  # Explicit pin for Python 3.13 compatibility
-# Upgraded to 2.10.4 for better Python 3.11/3.13 compatibility
-cryptography==42.0.0  # For encryption utilities (Fernet)
+cryptography==42.0.0
 
-# Environment & Configuration
-python-dotenv==1.0.0
+# =========================
+# Validation & Settings
+# =========================
+pydantic==2.10.4
 pydantic-settings==2.10.1
+pydantic[email]==2.10.4
+email-validator==2.1.0
+python-dotenv==1.0.0
 
-# CORS
-fastapi-cors==0.0.6
+# =========================
+# CORS (FastAPI-native)
+# =========================
+# NOTE: fastapi.middleware.cors is built-in
+# fastapi-cors REMOVED (wrong package)
 
-# PDF Generation
-reportlab==4.0.9
-weasyprint==60.2
-
-# Excel Export
-openpyxl==3.1.2
-
-# Date/Time
+# =========================
+# HTTP / Utilities
+# =========================
+requests==2.31.0
 python-dateutil==2.8.2
 
-# HTTP Client (for logo downloads in PDF generation)
-requests==2.31.0
+# =========================
+# Async / Background
+# =========================
+websockets==12.0
+aiosmtplib==3.0.1
 
-# Validation
-email-validator==2.1.0
+# =========================
+# Migrations
+# =========================
+alembic==1.13.1
 
-# Development
+# =========================
+# Development / Testing
+# =========================
 pytest==7.4.4
 pytest-asyncio==0.23.3
 httpx==0.26.0
-black==24.1.1
-flake8==7.0.0
 
-# Optional: Email
-aiosmtplib==3.0.1
-
-# Optional: WebSockets for real-time features
-websockets==12.0
-
-# Production
-gunicorn==21.2.0
-# PostgreSQL async driver (for Supabase/Render PostgreSQL)
-asyncpg==0.29.0
-# Note: psycopg2-binary is for sync operations only (not needed for async FastAPI)
-# psycopg2-binary==2.9.9  # Commented out - use asyncpg for async FastAPI
-alembic==1.13.1
-# cache-bust-asyncpg-2026-01-24
-# cache-bust-2026-01-24
+# =========================
+# CACHE BUST (DO NOT REMOVE)
+# =========================
+# railway-rebuild-2026-01-24-v2
