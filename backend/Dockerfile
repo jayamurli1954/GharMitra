@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # Upgrade pip and install Python dependencies
 # Prefer binary wheels but allow source builds if needed
@@ -21,7 +21,7 @@ RUN pip install --upgrade pip setuptools wheel && \
     pip install --prefer-binary -r requirements.txt
 
 # Copy application code
-COPY . .
+COPY backend/ .
 
 # Expose port (Railway will set PORT env var)
 EXPOSE $PORT
