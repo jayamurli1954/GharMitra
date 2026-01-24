@@ -73,34 +73,49 @@ async def perform_automated_backup():
     except Exception as e:
         logger.warning(f"  ⚠ Automated backup failed: {e}")
 
-# Create async engine - supports both SQLite and PostgreSQL
-# Convert postgresql:// to postgresql+asyncpg:// for async operations
-database_url = settings.DATABASE_URL
-if database_url.startswith("postgresql://") and "+asyncpg" not in database_url:
-    database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-elif database_url.startswith("postgresql+psycopg2://"):
-    # Convert psycopg2 to asyncpg for async operations
-    database_url = database_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
-
-engine = create_async_engine(
-    database_url,
-    echo=settings.DATABASE_ECHO,
-    future=True,
-    # PostgreSQL-specific connection pool settings
-    pool_pre_ping=True if "postgresql" in database_url else False,
-    pool_size=10 if "postgresql" in database_url else None,
-    max_overflow=20 if "postgresql" in database_url else None,
-)
-
-# Create async session factory
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
-
-# Base class for models
+# Base class for models (must be defined before models are imported)
 Base = declarative_base()
+
+# Global engine and session factory (initialized lazily in init_db)
+engine = None
+AsyncSessionLocal = None
+
+def get_database_url():
+    """Get and normalize database URL - doesn't create connection"""
+    database_url = settings.DATABASE_URL
+    if database_url.startswith("postgresql://") and "+asyncpg" not in database_url:
+        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif database_url.startswith("postgresql+psycopg2://"):
+        # Convert psycopg2 to asyncpg for async operations
+        database_url = database_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+    return database_url
+
+def create_engine_instance():
+    """Create engine instance - called during init_db, not at import time"""
+    global engine, AsyncSessionLocal
+    if engine is not None:
+        return engine  # Already created
+    
+    database_url = get_database_url()
+    
+    engine = create_async_engine(
+        database_url,
+        echo=settings.DATABASE_ECHO,
+        future=True,
+        # PostgreSQL-specific connection pool settings
+        pool_pre_ping=True if "postgresql" in database_url else False,
+        pool_size=10 if "postgresql" in database_url else None,
+        max_overflow=20 if "postgresql" in database_url else None,
+    )
+    
+    # Create async session factory
+    AsyncSessionLocal = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    
+    return engine
 
 # Import models so they're registered with Base (must be after Base is defined)
 # This ensures all tables are created when init_db() is called
@@ -109,56 +124,91 @@ def import_models():
     from app import models_db  # noqa: F401
 
 
-async def init_db():
-    """Initialize database - create all tables and run migrations"""
-    try:
-        # 0. Perform automated backup before any operations (SQLite only)
-        await perform_automated_backup()
-        
-        # 1. Database optimizations
-        if "sqlite" in settings.DATABASE_URL:
-             # Enable WAL mode for crash resilience and optimize settings
+async def init_db(retries: int = 5, delay: int = 3):
+    """
+    Initialize database - create all tables and run migrations
+    Includes retry logic for cloud deployments (Supabase cold starts)
+    Never crashes app startup - logs errors but continues
+    """
+    import asyncio
+    from sqlalchemy.exc import SQLAlchemyError
+    
+    # Create engine instance (lazy initialization - not at import time)
+    create_engine_instance()
+    
+    for attempt in range(1, retries + 1):
+        try:
+            # 0. Perform automated backup before any operations (SQLite only)
+            await perform_automated_backup()
+            
+            # 1. Test database connection first (important for cloud deployments)
             async with engine.connect() as conn:
-                await conn.execute(text("PRAGMA journal_mode=WAL"))
-                await conn.execute(text("PRAGMA synchronous=NORMAL"))
+                await conn.execute(text("SELECT 1"))
+            
+            # 2. Database optimizations
+            if "sqlite" in settings.DATABASE_URL:
+                 # Enable WAL mode for crash resilience and optimize settings
+                async with engine.connect() as conn:
+                    await conn.execute(text("PRAGMA journal_mode=WAL"))
+                    await conn.execute(text("PRAGMA synchronous=NORMAL"))
 
-                # Additional optimizations for corruption prevention
-                await conn.execute(text("PRAGMA wal_autocheckpoint=1000"))  # Checkpoint every 1000 pages
-                await conn.execute(text("PRAGMA cache_size=-8000"))  # 8MB cache (better performance)
-                await conn.execute(text("PRAGMA temp_store=MEMORY"))  # Use memory for temp tables
-                await conn.execute(text("PRAGMA foreign_keys=ON"))  # Enable foreign key constraints
-                await conn.execute(text("PRAGMA optimize"))  # Optimize the database
+                    # Additional optimizations for corruption prevention
+                    await conn.execute(text("PRAGMA wal_autocheckpoint=1000"))  # Checkpoint every 1000 pages
+                    await conn.execute(text("PRAGMA cache_size=-8000"))  # 8MB cache (better performance)
+                    await conn.execute(text("PRAGMA temp_store=MEMORY"))  # Use memory for temp tables
+                    await conn.execute(text("PRAGMA foreign_keys=ON"))  # Enable foreign key constraints
+                    await conn.execute(text("PRAGMA optimize"))  # Optimize the database
 
-                # Run initial checkpoint
-                await conn.execute(text("PRAGMA wal_checkpoint(PASSIVE)"))
-                await conn.execute(text("PRAGMA analysis_limit=1000"))  # Limit for query analysis
-                await conn.execute(text("PRAGMA automatic_index=ON"))  # Enable automatic indexing
+                    # Run initial checkpoint
+                    await conn.execute(text("PRAGMA wal_checkpoint(PASSIVE)"))
+                    await conn.execute(text("PRAGMA analysis_limit=1000"))  # Limit for query analysis
+                    await conn.execute(text("PRAGMA automatic_index=ON"))  # Enable automatic indexing
 
-                logger.info("  ✓ SQLite WAL mode enabled with optimizations")
-        else:
-             logger.info(f"  ✓ Connected to database: {settings.DATABASE_URL.split('@')[-1]}")
+                    logger.info("  ✓ SQLite WAL mode enabled with optimizations")
+            else:
+                 logger.info(f"  ✓ Connected to database: {settings.DATABASE_URL.split('@')[-1]}")
 
-        # Import models first to register them
-        import_models()
-        logger.info(f"Initializing database at {settings.DATABASE_URL}")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        
-        # Run migrations to add missing columns
-        await migrate_society_fields()
-        await migrate_physical_documents()
-        await migrate_physical_documents()
-        await migrate_user_consent_fields()
-        await migrate_member_privacy_fields() 
-        await migrate_vendor_schema() # Added vendor migration
-        await migrate_meeting_management()
-        await migrate_template_system()
-        await migrate_flats_bedrooms()  # Add bedrooms column to flats table
-        
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
+            # Import models first to register them
+            import_models()
+            logger.info(f"Initializing database at {settings.DATABASE_URL}")
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            
+            # Run migrations to add missing columns
+            await migrate_society_fields()
+            await migrate_physical_documents()
+            await migrate_physical_documents()
+            await migrate_user_consent_fields()
+            await migrate_member_privacy_fields() 
+            await migrate_vendor_schema() # Added vendor migration
+            await migrate_meeting_management()
+            await migrate_template_system()
+            await migrate_flats_bedrooms()  # Add bedrooms column to flats table
+            
+            logger.info("✅ Database initialized successfully")
+            return  # Success - exit function
+            
+        except SQLAlchemyError as e:
+            logger.warning(f"⚠️ Database connection failed (attempt {attempt}/{retries}): {e}")
+            if attempt < retries:
+                logger.info(f"  Retrying in {delay} seconds...")
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"❌ Database unavailable after {retries} attempts - app will continue without DB")
+                logger.error(f"   Error: {e}")
+                # Don't raise - let app start without DB
+                return
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize database: {e}")
+            logger.error(f"   Error type: {type(e).__name__}")
+            # For non-database errors, still don't crash - log and continue
+            if attempt < retries:
+                logger.info(f"  Retrying in {delay} seconds...")
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"❌ Database initialization failed after {retries} attempts")
+                logger.error(f"   App will start but database features may not work")
+                return
 
 
 async def migrate_society_fields():
@@ -1394,7 +1444,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency to get database session
     Usage: db: AsyncSession = Depends(get_db)
+    Ensures engine is initialized before use (lazy initialization)
     """
+    # Ensure engine is initialized (lazy initialization)
+    if AsyncSessionLocal is None:
+        create_engine_instance()
+    
     async with AsyncSessionLocal() as session:
         try:
             yield session

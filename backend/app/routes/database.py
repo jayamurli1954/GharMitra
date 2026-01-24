@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db, engine, perform_automated_backup
+from app.database import get_db, engine, perform_automated_backup, create_engine_instance
 from app.models.user import UserResponse
 from app.dependencies import get_current_admin_user, get_current_user
 from app.config import settings

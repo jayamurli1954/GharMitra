@@ -115,9 +115,35 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
+    """Health check endpoint - doesn't require DB to be up"""
+    from sqlalchemy import text
+    from app.database import engine, create_engine_instance
+    
+    # Ensure engine is initialized for health check
+    if engine is None:
+        try:
+            create_engine_instance()
+        except Exception as e:
+            return {
+                "status": "healthy",
+                "database": f"initialization_failed: {str(e)[:50]}",
+                "version": settings.API_VERSION
+            }
+    
+    db_status = "unknown"
+    if engine:
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            db_status = "connected"
+        except Exception as e:
+            db_status = f"disconnected: {str(e)[:50]}"
+    else:
+        db_status = "not_initialized"
+    
     return {
         "status": "healthy",
-        "database": "connected",
+        "database": db_status,
         "version": settings.API_VERSION
     }
 
