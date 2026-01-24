@@ -1,7 +1,7 @@
 """
 SQLite database connection using SQLAlchemy (async)
 """
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from typing import AsyncGenerator
 from app.config import settings
@@ -95,9 +95,12 @@ def create_engine_instance():
     global engine, AsyncSessionLocal
     if engine is not None:
         return engine  # Already created
-    
+
+    # Import here to avoid import-time crashes
+    from sqlalchemy.ext.asyncio import create_async_engine
+
     database_url = get_database_url()
-    
+
     engine = create_async_engine(
         database_url,
         echo=settings.DATABASE_ECHO,
