@@ -2,5 +2,5 @@
 nixPkgs = ["python312"]
 
 [phases.install]
-# Force rebuild - ensure asyncpg is installed
-cmds = ["pip install --upgrade pip setuptools wheel", "pip install --prefer-binary -r requirements.txt"]
+# Force rebuild - ensure asyncpg is installed (no-cache)
+cmds = ["pip install --upgrade pip setuptools wheel", "pip install --no-cache-dir --prefer-binary -r requirements.txt"]
