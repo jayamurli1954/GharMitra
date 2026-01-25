@@ -22,6 +22,12 @@ const getApiUrl = () => {
     return window.__API_URL__;
   }
 
+  // Production Detection - Vercel/Cloud deployment (Priority 3)
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    // Running on Vercel or other cloud - use Render backend
+    return 'https://gharmitra-backend.onrender.com/api';
+  }
+
   // Local Development Fallback
   return 'http://localhost:8001/api';
 };
