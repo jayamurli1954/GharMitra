@@ -228,6 +228,18 @@ async def init_db(retries: int = 5, delay: int = 3):
                 return
 
 
+def is_postgresql() -> bool:
+    """Check if we're using PostgreSQL"""
+    return "postgresql" in settings.DATABASE_URL
+
+
+def get_autoincrement_syntax() -> str:
+    """Get the correct auto-increment primary key syntax for the database"""
+    if is_postgresql():
+        return "SERIAL PRIMARY KEY"
+    return "INTEGER PRIMARY KEY AUTOINCREMENT"
+
+
 async def get_table_columns(db, table_name: str) -> set:
     """Get column names for a table - works with both SQLite and PostgreSQL"""
     database_url = settings.DATABASE_URL
@@ -457,15 +469,16 @@ async def migrate_society_fields():
             # Also check and add admin_guidelines_acknowledgments table if needed
             try:
                 if not await table_exists(db, "admin_guidelines_acknowledgments"):
-                    await db.execute(text("""
+                    pk_syntax = get_autoincrement_syntax()
+                    await db.execute(text(f"""
                         CREATE TABLE admin_guidelines_acknowledgments (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            id {pk_syntax},
                             user_id INTEGER NOT NULL UNIQUE,
                             society_id INTEGER NOT NULL,
                             acknowledged_version VARCHAR(20) NOT NULL,
-                            acknowledged_at DATETIME NOT NULL,
-                            created_at DATETIME NOT NULL,
-                            updated_at DATETIME NOT NULL,
+                            acknowledged_at TIMESTAMP NOT NULL,
+                            created_at TIMESTAMP NOT NULL,
+                            updated_at TIMESTAMP NOT NULL,
                             FOREIGN KEY (user_id) REFERENCES users(id),
                             FOREIGN KEY (society_id) REFERENCES societies(id)
                         )
@@ -478,9 +491,10 @@ async def migrate_society_fields():
             # Also check and add meetings and meeting_minutes tables if needed
             try:
                 if not await table_exists(db, "meetings"):
-                    await db.execute(text("""
+                    pk_syntax = get_autoincrement_syntax()
+                    await db.execute(text(f"""
                         CREATE TABLE meetings (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            id {pk_syntax},
                             society_id INTEGER NOT NULL,
                             meeting_type VARCHAR(20) NOT NULL,
                             meeting_date DATE NOT NULL,
@@ -489,12 +503,12 @@ async def migrate_society_fields():
                             agenda TEXT,
                             attendees_count INTEGER,
                             chaired_by VARCHAR(100),
-                            notice_sent BOOLEAN DEFAULT 0 NOT NULL,
-                            notice_sent_at DATETIME,
+                            notice_sent BOOLEAN DEFAULT FALSE NOT NULL,
+                            notice_sent_at TIMESTAMP,
                             notice_sent_by INTEGER,
                             created_by INTEGER NOT NULL,
-                            created_at DATETIME NOT NULL,
-                            updated_at DATETIME NOT NULL,
+                            created_at TIMESTAMP NOT NULL,
+                            updated_at TIMESTAMP NOT NULL,
                             FOREIGN KEY (society_id) REFERENCES societies(id),
                             FOREIGN KEY (created_by) REFERENCES users(id),
                             FOREIGN KEY (notice_sent_by) REFERENCES users(id)
@@ -591,9 +605,10 @@ async def migrate_vendor_schema():
         async with AsyncSessionLocal() as db:
             # 1. Create Vendors Table
             if not await table_exists(db, "vendors"):
-                await db.execute(text("""
+                pk_syntax = get_autoincrement_syntax()
+                await db.execute(text(f"""
                     CREATE TABLE vendors (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id {pk_syntax},
                         society_id INTEGER NOT NULL DEFAULT 1,
                         name VARCHAR(100) NOT NULL,
                         category VARCHAR(50),
@@ -604,8 +619,8 @@ async def migrate_vendor_schema():
                         tax_id VARCHAR(50),
                         opening_balance REAL DEFAULT 0.0,
                         current_balance REAL DEFAULT 0.0,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (society_id) REFERENCES societies(id)
                     )
                 """))
@@ -807,9 +822,10 @@ async def migrate_meeting_management():
             
             # Create meeting_agenda_items table if it doesn't exist
             if not await table_exists(db, "meeting_agenda_items"):
-                await db.execute(text("""
+                pk_syntax = get_autoincrement_syntax()
+                await db.execute(text(f"""
                     CREATE TABLE meeting_agenda_items (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id {pk_syntax},
                         meeting_id INTEGER NOT NULL,
                         society_id INTEGER NOT NULL,
                         item_number INTEGER NOT NULL,
@@ -818,7 +834,7 @@ async def migrate_meeting_management():
                         discussion_summary TEXT,
                         status VARCHAR(20) DEFAULT 'pending',
                         resolution_id INTEGER,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
                         FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
                         FOREIGN KEY (resolution_id) REFERENCES meeting_resolutions(id)
