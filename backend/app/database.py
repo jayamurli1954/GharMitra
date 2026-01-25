@@ -98,18 +98,31 @@ def create_engine_instance():
 
     # Import here to avoid import-time crashes
     from sqlalchemy.ext.asyncio import create_async_engine
+    import ssl
 
     database_url = get_database_url()
 
-    engine = create_async_engine(
-        database_url,
-        echo=settings.DATABASE_ECHO,
-        future=True,
-        # PostgreSQL-specific connection pool settings
-        pool_pre_ping=True if "postgresql" in database_url else False,
-        pool_size=10 if "postgresql" in database_url else None,
-        max_overflow=20 if "postgresql" in database_url else None,
-    )
+    # Build engine kwargs
+    engine_kwargs = {
+        "echo": settings.DATABASE_ECHO,
+        "future": True,
+    }
+
+    # PostgreSQL-specific settings (including Supabase/Neon)
+    if "postgresql" in database_url:
+        engine_kwargs.update({
+            "pool_pre_ping": True,
+            "pool_size": 10,
+            "max_overflow": 20,
+        })
+        # SSL required for cloud PostgreSQL (Supabase, Neon, etc.)
+        if "supabase" in database_url or "neon" in database_url:
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            engine_kwargs["connect_args"] = {"ssl": ssl_context}
+
+    engine = create_async_engine(database_url, **engine_kwargs)
     
     # Create async session factory
     AsyncSessionLocal = async_sessionmaker(
