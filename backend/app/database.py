@@ -163,10 +163,21 @@ async def init_db(retries: int = 5, delay: int = 3):
                 # Log the host we are trying to connect to (for debugging)
                 from urllib.parse import urlparse
                 try:
-                    masked_url = settings.DATABASE_URL.replace(settings.DATABASE_URL.split(":")[2].split("@")[0], "******")
-                    logger.info(f"Attempting to connect to DB at: {masked_url.split('@')[-1]}")
-                except:
-                    logger.info("Attempting to connect to DB (url redaction failed)")
+                    # Clean/safe parsing of the URL
+                    db_url_parts = settings.DATABASE_URL.split("@")
+                    if len(db_url_parts) > 1:
+                        # Get user part (before @, after //)
+                        user_pass = db_url_parts[0].split("//")[1]
+                        if ":" in user_pass:
+                            username = user_pass.split(":")[0]
+                        else:
+                            username = user_pass
+                        
+                        host_port = db_url_parts[1]
+                        logger.info(f"Attempting DB connection as USER: '{username}'")
+                        logger.info(f"Connecting to HOST: '{host_port}'")
+                except Exception as parse_err:
+                    logger.info(f"Attempting to connect to DB (url parsing failed: {parse_err})")
 
                 async with engine.connect() as conn:
                     await conn.execute(text("SELECT 1"))
