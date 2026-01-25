@@ -228,14 +228,47 @@ async def init_db(retries: int = 5, delay: int = 3):
                 return
 
 
+async def get_table_columns(db, table_name: str) -> set:
+    """Get column names for a table - works with both SQLite and PostgreSQL"""
+    database_url = settings.DATABASE_URL
+    if "postgresql" in database_url:
+        # PostgreSQL - use information_schema
+        result = await db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = :table_name
+        """), {"table_name": table_name})
+        return {row[0] for row in result.fetchall()}
+    else:
+        # SQLite - use PRAGMA
+        result = await db.execute(text(f"PRAGMA table_info({table_name})"))
+        return {row[1] for row in result.fetchall()}
+
+
+async def table_exists(db, table_name: str) -> bool:
+    """Check if a table exists - works with both SQLite and PostgreSQL"""
+    database_url = settings.DATABASE_URL
+    if "postgresql" in database_url:
+        result = await db.execute(text("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_name = :table_name
+            )
+        """), {"table_name": table_name})
+        return result.scalar()
+    else:
+        result = await db.execute(text(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name"
+        ), {"table_name": table_name})
+        return result.fetchone() is not None
+
+
 async def migrate_society_fields():
     """Add missing columns to societies table if they don't exist"""
     from sqlalchemy import text
     try:
         async with AsyncSessionLocal() as db:
-            # Check existing columns
-            result = await db.execute(text("PRAGMA table_info(societies)"))
-            columns = {row[1]: row for row in result.fetchall()}
+            # Check existing columns (PostgreSQL/SQLite compatible)
+            columns = await get_table_columns(db, "societies")
             
             # Columns to add
             new_columns = [
@@ -265,8 +298,7 @@ async def migrate_society_fields():
             
             # Also check and add missing columns to maintenance_bills if needed
             try:
-                result = await db.execute(text("PRAGMA table_info(maintenance_bills)"))
-                bill_columns = {row[1]: row for row in result.fetchall()}
+                bill_columns = await get_table_columns(db, "maintenance_bills")
                 
                 # Add bill_number if missing
                 if "bill_number" not in bill_columns:
@@ -368,8 +400,7 @@ async def migrate_society_fields():
             
             # Also check and add missing columns to water_expenses if needed
             try:
-                result = await db.execute(text("PRAGMA table_info(water_expenses)"))
-                water_columns = {row[1]: row for row in result.fetchall()}
+                water_columns = await get_table_columns(db, "water_expenses")
                 
                 # Add tanker_charges if missing
                 if "tanker_charges" not in water_columns:
@@ -399,8 +430,7 @@ async def migrate_society_fields():
             
             # Also check and add document_number to transactions if needed
             try:
-                result = await db.execute(text("PRAGMA table_info(transactions)"))
-                transaction_columns = {row[1]: row for row in result.fetchall()}
+                transaction_columns = await get_table_columns(db, "transactions")
                 if "document_number" not in transaction_columns:
                     await db.execute(text("ALTER TABLE transactions ADD COLUMN document_number VARCHAR(50)"))
                     await db.commit()
@@ -416,8 +446,7 @@ async def migrate_society_fields():
             
             # Also check and add is_fixed_expense to account_codes if needed
             try:
-                result = await db.execute(text("PRAGMA table_info(account_codes)"))
-                account_columns = {row[1]: row for row in result.fetchall()}
+                account_columns = await get_table_columns(db, "account_codes")
                 if "is_fixed_expense" not in account_columns:
                     await db.execute(text("ALTER TABLE account_codes ADD COLUMN is_fixed_expense BOOLEAN DEFAULT 0"))
                     await db.commit()
@@ -427,8 +456,7 @@ async def migrate_society_fields():
             
             # Also check and add admin_guidelines_acknowledgments table if needed
             try:
-                result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='admin_guidelines_acknowledgments'"))
-                if not result.fetchone():
+                if not await table_exists(db, "admin_guidelines_acknowledgments"):
                     await db.execute(text("""
                         CREATE TABLE admin_guidelines_acknowledgments (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -449,8 +477,7 @@ async def migrate_society_fields():
             
             # Also check and add meetings and meeting_minutes tables if needed
             try:
-                result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='meetings'"))
-                if not result.fetchone():
+                if not await table_exists(db, "meetings"):
                     await db.execute(text("""
                         CREATE TABLE meetings (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -483,8 +510,7 @@ async def migrate_society_fields():
             
             # Also check and add notice_sent columns to meetings table if needed
             try:
-                result = await db.execute(text("PRAGMA table_info(meetings)"))
-                meeting_columns = {row[1]: row for row in result.fetchall()}
+                meeting_columns = await get_table_columns(db, "meetings")
                 if "notice_sent" not in meeting_columns:
                     await db.execute(text("ALTER TABLE meetings ADD COLUMN notice_sent BOOLEAN DEFAULT 0 NOT NULL"))
                     await db.execute(text("ALTER TABLE meetings ADD COLUMN notice_sent_at DATETIME"))
@@ -506,9 +532,8 @@ async def migrate_user_consent_fields():
     from sqlalchemy import text
     try:
         async with AsyncSessionLocal() as db:
-            # Check existing columns
-            result = await db.execute(text("PRAGMA table_info(users)"))
-            columns = {row[1]: row for row in result.fetchall()}
+            # Check existing columns (PostgreSQL/SQLite compatible)
+            columns = await get_table_columns(db, "users")
             
             # Add consent fields if they don't exist
             consent_fields = [
@@ -536,8 +561,7 @@ async def migrate_member_privacy_fields():
     from sqlalchemy import text
     try:
         async with AsyncSessionLocal() as db:
-            result = await db.execute(text("PRAGMA table_info(members)"))
-            columns = {row[1]: row for row in result.fetchall()}
+            columns = await get_table_columns(db, "members")
             
             if "is_mobile_public" not in columns:
                 try:
@@ -566,8 +590,7 @@ async def migrate_vendor_schema():
     try:
         async with AsyncSessionLocal() as db:
             # 1. Create Vendors Table
-            result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='vendors'"))
-            if not result.fetchone():
+            if not await table_exists(db, "vendors"):
                 await db.execute(text("""
                     CREATE TABLE vendors (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -589,8 +612,7 @@ async def migrate_vendor_schema():
                 logger.info("  ✓ Created vendors table")
 
             # 2. Add vendor_id to transactions
-            result = await db.execute(text("PRAGMA table_info(transactions)"))
-            columns = {row[1]: row for row in result.fetchall()}
+            columns = await get_table_columns(db, "transactions")
             
             if "vendor_id" not in columns:
                 try:
@@ -611,43 +633,71 @@ async def migrate_physical_documents():
     try:
         async with AsyncSessionLocal() as db:
             # Check if table exists
-            result = await db.execute(text("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='physical_documents_checklist'
-            """))
-            if not result.fetchone():
+            if not await table_exists(db, "physical_documents_checklist"):
                 logger.info("Creating physical_documents_checklist tables...")
                 
-                # Create physical_documents_checklist table
-                await db.execute(text("""
-                    CREATE TABLE IF NOT EXISTS physical_documents_checklist (
-                      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                      society_id INTEGER NOT NULL,
-                      member_id INTEGER NOT NULL,
-                      flat_id INTEGER NOT NULL,
-                      document_type TEXT NOT NULL CHECK (document_type IN (
-                        'aadhaar', 'pan', 'passport', 'driving_license',
-                        'rent_agreement', 'sale_deed', 'electricity_bill',
-                        'water_bill', 'other'
-                      )),
-                      submitted INTEGER DEFAULT 0,
-                      submission_date TEXT,
-                      verified INTEGER DEFAULT 0,
-                      verified_by INTEGER,
-                      verification_date TEXT,
-                      storage_location TEXT,
-                      storage_location_encrypted TEXT,
-                      verification_notes TEXT,
-                      verification_notes_encrypted TEXT,
-                      created_at TEXT DEFAULT (datetime('now')),
-                      updated_at TEXT DEFAULT (datetime('now')),
-                      UNIQUE(member_id, document_type),
-                      FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
-                      FOREIGN KEY (member_id) REFERENCES users(id) ON DELETE CASCADE,
-                      FOREIGN KEY (flat_id) REFERENCES flats(id) ON DELETE CASCADE,
-                      FOREIGN KEY (verified_by) REFERENCES users(id)
-                    )
-                """))
+                # Create physical_documents_checklist table (PostgreSQL/SQLite compatible)
+                database_url = settings.DATABASE_URL
+                if "postgresql" in database_url:
+                    await db.execute(text("""
+                        CREATE TABLE IF NOT EXISTS physical_documents_checklist (
+                          id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                          society_id INTEGER NOT NULL,
+                          member_id INTEGER NOT NULL,
+                          flat_id INTEGER NOT NULL,
+                          document_type TEXT NOT NULL CHECK (document_type IN (
+                            'aadhaar', 'pan', 'passport', 'driving_license',
+                            'rent_agreement', 'sale_deed', 'electricity_bill',
+                            'water_bill', 'other'
+                          )),
+                          submitted INTEGER DEFAULT 0,
+                          submission_date TEXT,
+                          verified INTEGER DEFAULT 0,
+                          verified_by INTEGER,
+                          verification_date TEXT,
+                          storage_location TEXT,
+                          storage_location_encrypted TEXT,
+                          verification_notes TEXT,
+                          verification_notes_encrypted TEXT,
+                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          UNIQUE(member_id, document_type),
+                          FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
+                          FOREIGN KEY (member_id) REFERENCES users(id) ON DELETE CASCADE,
+                          FOREIGN KEY (flat_id) REFERENCES flats(id) ON DELETE CASCADE,
+                          FOREIGN KEY (verified_by) REFERENCES users(id)
+                        )
+                    """))
+                else:
+                    await db.execute(text("""
+                        CREATE TABLE IF NOT EXISTS physical_documents_checklist (
+                          id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+                          society_id INTEGER NOT NULL,
+                          member_id INTEGER NOT NULL,
+                          flat_id INTEGER NOT NULL,
+                          document_type TEXT NOT NULL CHECK (document_type IN (
+                            'aadhaar', 'pan', 'passport', 'driving_license',
+                            'rent_agreement', 'sale_deed', 'electricity_bill',
+                            'water_bill', 'other'
+                          )),
+                          submitted INTEGER DEFAULT 0,
+                          submission_date TEXT,
+                          verified INTEGER DEFAULT 0,
+                          verified_by INTEGER,
+                          verification_date TEXT,
+                          storage_location TEXT,
+                          storage_location_encrypted TEXT,
+                          verification_notes TEXT,
+                          verification_notes_encrypted TEXT,
+                          created_at TEXT DEFAULT (datetime('now')),
+                          updated_at TEXT DEFAULT (datetime('now')),
+                          UNIQUE(member_id, document_type),
+                          FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
+                          FOREIGN KEY (member_id) REFERENCES users(id) ON DELETE CASCADE,
+                          FOREIGN KEY (flat_id) REFERENCES flats(id) ON DELETE CASCADE,
+                          FOREIGN KEY (verified_by) REFERENCES users(id)
+                        )
+                    """))
                 
                 # Create indexes
                 await db.execute(text("""
@@ -667,20 +717,35 @@ async def migrate_physical_documents():
                     ON physical_documents_checklist(submitted, submission_date)
                 """))
                 
-                # Create document_access_logs table
-                await db.execute(text("""
-                    CREATE TABLE IF NOT EXISTS document_access_logs (
-                      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                      document_id TEXT,
-                      document_type TEXT NOT NULL CHECK (document_type IN ('physical', 'digital')),
-                      accessed_by INTEGER,
-                      access_type TEXT NOT NULL,
-                      access_timestamp TEXT DEFAULT (datetime('now')),
-                      ip_address TEXT,
-                      user_agent TEXT,
-                      FOREIGN KEY (accessed_by) REFERENCES users(id)
-                    )
-                """))
+                # Create document_access_logs table (PostgreSQL/SQLite compatible)
+                if "postgresql" in database_url:
+                    await db.execute(text("""
+                        CREATE TABLE IF NOT EXISTS document_access_logs (
+                          id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                          document_id TEXT,
+                          document_type TEXT NOT NULL CHECK (document_type IN ('physical', 'digital')),
+                          accessed_by INTEGER,
+                          access_type TEXT NOT NULL,
+                          access_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          ip_address TEXT,
+                          user_agent TEXT,
+                          FOREIGN KEY (accessed_by) REFERENCES users(id)
+                        )
+                    """))
+                else:
+                    await db.execute(text("""
+                        CREATE TABLE IF NOT EXISTS document_access_logs (
+                          id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+                          document_id TEXT,
+                          document_type TEXT NOT NULL CHECK (document_type IN ('physical', 'digital')),
+                          accessed_by INTEGER,
+                          access_type TEXT NOT NULL,
+                          access_timestamp TEXT DEFAULT (datetime('now')),
+                          ip_address TEXT,
+                          user_agent TEXT,
+                          FOREIGN KEY (accessed_by) REFERENCES users(id)
+                        )
+                    """))
                 
                 # Create access log indexes
                 await db.execute(text("""
@@ -710,11 +775,9 @@ async def migrate_meeting_management():
     try:
         async with AsyncSessionLocal() as db:
             # Check if meetings table exists and add new columns
-            result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='meetings'"))
-            if result.fetchone():
+            if await table_exists(db, "meetings"):
                 # Table exists, check and add new columns
-                result = await db.execute(text("PRAGMA table_info(meetings)"))
-                columns = {row[1]: row for row in result.fetchall()}
+                columns = await get_table_columns(db, "meetings")
                 
                 # Add new columns to meetings table
                 new_columns = [
@@ -743,8 +806,7 @@ async def migrate_meeting_management():
                             logger.warning(f"  ⚠ Could not add {col_name}: {e}")
             
             # Create meeting_agenda_items table if it doesn't exist
-            result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_agenda_items'"))
-            if not result.fetchone():
+            if not await table_exists(db, "meeting_agenda_items"):
                 await db.execute(text("""
                     CREATE TABLE meeting_agenda_items (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -767,8 +829,7 @@ async def migrate_meeting_management():
                 logger.info("  ✓ Created meeting_agenda_items table")
             
             # Create meeting_attendance table if it doesn't exist
-            result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_attendance'"))
-            if not result.fetchone():
+            if not await table_exists(db, "meeting_attendance"):
                 await db.execute(text("""
                     CREATE TABLE meeting_attendance (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -795,8 +856,7 @@ async def migrate_meeting_management():
                 logger.info("  ✓ Created meeting_attendance table")
             
             # Create meeting_resolutions table if it doesn't exist
-            result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_resolutions'"))
-            if not result.fetchone():
+            if not await table_exists(db, "meeting_resolutions"):
                 await db.execute(text("""
                     CREATE TABLE meeting_resolutions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -832,8 +892,7 @@ async def migrate_meeting_management():
                 logger.info("  ✓ Created meeting_resolutions table")
             
             # Create meeting_votes table if it doesn't exist
-            result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_votes'"))
-            if not result.fetchone():
+            if not await table_exists(db, "meeting_votes"):
                 await db.execute(text("""
                     CREATE TABLE meeting_votes (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -863,9 +922,11 @@ async def migrate_template_system():
     from sqlalchemy import text
     try:
         async with AsyncSessionLocal() as db:
+            database_url = settings.DATABASE_URL
+            is_postgres = "postgresql" in database_url
+
             # Create template_categories table if it doesn't exist
-            result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='template_categories'"))
-            if not result.fetchone():
+            if not await table_exists(db, "template_categories"):
                 await db.execute(text("""
                     CREATE TABLE template_categories (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -898,14 +959,13 @@ async def migrate_template_system():
                 for cat_code, cat_name, cat_desc, icon, order in categories:
                     await db.execute(text("""
                         INSERT INTO template_categories (category_code, category_name, category_description, icon_name, display_order, is_active)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """), [cat_code, cat_name, cat_desc, icon, order, 1])
+                        VALUES (:code, :name, :desc, :icon, :order, :active)
+                    """), {"code": cat_code, "name": cat_name, "desc": cat_desc, "icon": icon, "order": order, "active": 1})
                 await db.commit()
                 logger.info("  ✓ Inserted default template categories")
             
             # Create document_templates table if it doesn't exist
-            result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='document_templates'"))
-            if not result.fetchone():
+            if not await table_exists(db, "document_templates"):
                 await db.execute(text("""
                     CREATE TABLE document_templates (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -937,8 +997,7 @@ async def migrate_template_system():
                 logger.info("  ✓ Created document_templates table")
             
             # Create template_usage_log table if it doesn't exist
-            result = await db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='template_usage_log'"))
-            if not result.fetchone():
+            if not await table_exists(db, "template_usage_log"):
                 await db.execute(text("""
                     CREATE TABLE template_usage_log (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1424,9 +1483,8 @@ async def migrate_flats_bedrooms():
     from sqlalchemy import text
     try:
         async with AsyncSessionLocal() as db:
-            # Check existing columns
-            result = await db.execute(text("PRAGMA table_info(flats)"))
-            columns = {row[1]: row for row in result.fetchall()}
+            # Check existing columns (PostgreSQL/SQLite compatible)
+            columns = await get_table_columns(db, "flats")
             
             # Add bedrooms column if it doesn't exist
             if 'bedrooms' not in columns:
