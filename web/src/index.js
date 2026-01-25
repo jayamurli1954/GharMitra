@@ -34,7 +34,9 @@ try {
       </ErrorBoundary>
     </React.StrictMode>
   );
-  
+
+  // Mark React as mounted so global error handler stops
+  window.__REACT_MOUNTED__ = true;
   console.log('App rendered successfully!');
 } catch (error) {
   console.error('FATAL ERROR: Failed to initialize GharMitra:', error);

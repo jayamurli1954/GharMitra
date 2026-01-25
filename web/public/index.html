@@ -26,8 +26,29 @@
             });
         }
 
-        // Capture all errors and display them on page
+        // Track if React has successfully mounted
+        window.__REACT_MOUNTED__ = false;
+
+        // Capture critical errors only (before React mounts)
         window.addEventListener('error', function(e) {
+            // Ignore errors after React has mounted (let React handle them)
+            if (window.__REACT_MOUNTED__) {
+                console.warn('Post-mount error (handled by React):', e.error || e.message);
+                return;
+            }
+
+            // Ignore errors from browser extensions
+            if (e.filename && (e.filename.includes('extension') || e.filename.includes('chext'))) {
+                console.warn('Ignoring extension error:', e.message);
+                return;
+            }
+
+            // Ignore undefined errors (usually from extensions)
+            if (!e.error && !e.message) {
+                console.warn('Ignoring undefined error');
+                return;
+            }
+
             console.error('Global error caught:', e.error);
             var root = document.getElementById('root');
             if (root) {

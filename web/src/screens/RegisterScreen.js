@@ -95,7 +95,7 @@ const RegisterScreen = ({ onRegisterSuccess }) => {
         {/* Logo */}
         <div className="login-logo-container">
           <img
-            src="/logo192.png"
+            src="/GharMitra_Logo.png"
             alt="GharMitra Logo"
             className="login-logo"
             style={{ width: '120px', height: '120px', borderRadius: '20px' }}
