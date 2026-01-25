@@ -98,8 +98,9 @@ app = FastAPI(
 # For production, use settings.allowed_origins_list or allow all with credentials=False
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (works when credentials=False)
-    allow_credentials=False,  # Set to False to allow wildcard origins
+    allow_origin_regex=r"https://gharmitra.*\.vercel\.app|http://localhost:\d+",
+    allow_origins=["https://gharmitra.vercel.app"], # Main production domain
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
