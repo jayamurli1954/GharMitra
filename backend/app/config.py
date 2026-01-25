@@ -25,8 +25,8 @@ class Settings(BaseSettings):
 
     # CORS
     # In development, allow all origins for mobile device access
-    # In production, specify exact origins
-    ALLOWED_ORIGINS: str = "http://localhost:19006,http://localhost:3000,http://localhost:3001,http://localhost:3005,http://localhost:3006"
+    # In production, specify exact origins (including Vercel deployments)
+    ALLOWED_ORIGINS: str = "http://localhost:19006,http://localhost:3000,http://localhost:3001,http://localhost:3005,http://localhost:3006,https://gharmitra.vercel.app,https://*.vercel.app"
     API_VERSION: str = "v1"
     APP_NAME: str = "GharMitra API"
 
