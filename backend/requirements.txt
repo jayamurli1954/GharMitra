@@ -59,6 +59,12 @@ pytest-asyncio==0.23.3
 httpx==0.26.0
 
 # =========================
+# Export / Reporting
+# =========================
+openpyxl==3.1.2
+reportlab==4.0.9
+
+# =========================
 # CACHE BUST (DO NOT REMOVE)
 # =========================
 # railway-rebuild-2026-01-24-v2
