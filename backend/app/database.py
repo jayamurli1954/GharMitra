@@ -125,6 +125,7 @@ def create_engine_instance():
 def import_models():
     """Import all models to register them with Base"""
     from app import models_db  # noqa: F401
+    from app.models import audit_adjustment  # noqa: F401
 
 
 async def init_db(retries: int = 5, delay: int = 3):

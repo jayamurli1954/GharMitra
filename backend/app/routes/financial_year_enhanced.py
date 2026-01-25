@@ -19,11 +19,11 @@ from ..models_db import (
     OpeningBalance,
     BalanceType,
     BalanceStatus,
-    AuditAdjustment,
-    AdjustmentType,
     AccountCode,
     Transaction
 )
+from ..models.audit_adjustment import AuditAdjustment, AdjustmentType
+
 from ..schemas.financial_year import (
     FinancialYearCreate,
     ProvisionalClosingRequest,
