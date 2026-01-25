@@ -159,8 +159,17 @@ async def init_db(retries: int = 5, delay: int = 3):
             await perform_automated_backup()
             
             # 1. Test database connection first (important for cloud deployments)
-            async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
+            try:
+                async with engine.connect() as conn:
+                    await conn.execute(text("SELECT 1"))
+            except (OSError, Exception) as e:
+                # Catch network unreachable errors common with Render -> Supabase IPv6 changes
+                error_str = str(e)
+                if "Network is unreachable" in error_str or "101" in error_str:
+                    logger.error("🛑 NETWORK ERROR: Cannot reach database.")
+                    logger.error("👉 SUGGESTION: If using Supabase, update DATABASE_URL to use the CONNECTION POOLER (port 6543).")
+                    logger.error("   Example: postgresql://user.proj:pass@aws-0-ap-south-1.pooler.supabase.com:6543/postgres")
+                raise e
             
             # 2. Database optimizations
             if "sqlite" in settings.DATABASE_URL:
