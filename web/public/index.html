@@ -58,19 +58,24 @@
             }
         }, true);
 
-        // Test if bundle.js loaded
+        // Test if bundle.js loaded (only if React hasn't mounted after 5 seconds)
         window.addEventListener('load', function() {
             console.log('Page fully loaded');
             setTimeout(function() {
+                // Use the __REACT_MOUNTED__ flag to check if React mounted
+                if (window.__REACT_MOUNTED__) {
+                    console.log('React mounted successfully - app is running');
+                    return; // Everything is fine
+                }
+
+                console.error('React did not mount after 5 seconds');
                 var root = document.getElementById('root');
-                // Check if React mounted (root content should have changed)
-                if (root && (root.innerHTML.includes('Application is initializing') || root.innerHTML.includes('GharMitra') && !root.innerHTML.includes('Show Debug'))) {
-                    console.error('React did not mount! Bundle.js may not have loaded.');
+                if (root) {
                     var bundleTest = document.querySelector('script[src*="bundle.js"]');
                     if (!bundleTest) {
                         root.innerHTML = '<div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; padding: 20px; text-align: center;"><h1 style="color: #ff4444;">⚠️ Bundle.js Not Found</h1><p style="color: #666; font-size: 18px; margin-bottom: 10px;">The JavaScript bundle is not loading</p><p style="color: #999; font-size: 14px; margin-bottom: 20px;">Check if dev server is running: npm run dev</p><button onclick="window.location.reload()" style="margin-top: 20px; padding: 12px 24px; background: #007AFF; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;">Reload Page</button></div>';
                     } else {
-                        root.innerHTML = '<div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; padding: 20px; text-align: center;"><h1 style="color: #ff4444;">⚠️ React Failed to Mount</h1><p style="color: #666; font-size: 18px; margin-bottom: 10px;">Bundle.js loaded but React did not initialize</p><p style="color: #999; font-size: 14px; margin-bottom: 20px;">There may be a JavaScript error. Check the error message above.</p><button onclick="window.location.reload()" style="margin-top: 20px; padding: 12px 24px; background: #007AFF; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;">Reload Page</button></div>';
+                        root.innerHTML = '<div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; padding: 20px; text-align: center;"><h1 style="color: #ff4444;">⚠️ React Failed to Mount</h1><p style="color: #666; font-size: 18px; margin-bottom: 10px;">Bundle.js loaded but React did not initialize</p><p style="color: #999; font-size: 14px; margin-bottom: 20px;">There may be a JavaScript error. Check the console for details.</p><button onclick="window.location.reload()" style="margin-top: 20px; padding: 12px 24px; background: #007AFF; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;">Reload Page</button></div>';
                     }
                 }
             }, 5000);
