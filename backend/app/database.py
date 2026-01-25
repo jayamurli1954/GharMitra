@@ -160,6 +160,14 @@ async def init_db(retries: int = 5, delay: int = 3):
             
             # 1. Test database connection first (important for cloud deployments)
             try:
+                # Log the host we are trying to connect to (for debugging)
+                from urllib.parse import urlparse
+                try:
+                    masked_url = settings.DATABASE_URL.replace(settings.DATABASE_URL.split(":")[2].split("@")[0], "******")
+                    logger.info(f"Attempting to connect to DB at: {masked_url.split('@')[-1]}")
+                except:
+                    logger.info("Attempting to connect to DB (url redaction failed)")
+
                 async with engine.connect() as conn:
                     await conn.execute(text("SELECT 1"))
             except (OSError, Exception) as e:
