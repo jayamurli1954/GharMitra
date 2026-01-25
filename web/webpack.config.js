@@ -1,7 +1,6 @@
 const path = require('path');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   entry: './src/index.js',
@@ -45,12 +44,6 @@ module.exports = {
     alias: {
       'react-native$': 'react-native-web',
       '@react-native-async-storage/async-storage$': path.resolve(__dirname, 'src/utils/storage.js'),
-      '@': path.resolve(__dirname, 'src'),
-      '@components': path.resolve(__dirname, 'src/components'),
-      '@screens': path.resolve(__dirname, 'src/screens'),
-      '@services': path.resolve(__dirname, 'src/services'),
-      '@utils': path.resolve(__dirname, 'src/utils'),
-      '@types': path.resolve(__dirname, 'src/types'),
     },
     extensions: ['.web.js', '.web.jsx', '.js', '.jsx', '.json', '.ts', '.tsx'],
     fallback: {
@@ -64,17 +57,6 @@ module.exports = {
       template: './public/index.html',
       filename: 'index.html',
       inject: true,
-    }),
-    new CopyPlugin({
-      patterns: [
-        {
-          from: 'public',
-          to: '.',
-          globOptions: {
-            ignore: ['**/index.html'],
-          },
-        },
-      ],
     }),
     new webpack.DefinePlugin({
       'process.env.REACT_APP_API_URL': JSON.stringify(process.env.REACT_APP_API_URL || 'http://localhost:8001/api'),

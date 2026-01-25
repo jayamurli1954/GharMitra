@@ -1155,90 +1155,24 @@ const FlatsBlocksTab = () => {
       <div className="settings-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h3 style={{ margin: 0 }}>Existing Flats</h3>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={() => setShowDebugPanel(!showDebugPanel)}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: showDebugPanel ? '#FF9500' : '#666',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 'bold'
-              }}
-            >
-              {showDebugPanel ? '🔽 Hide Debug' : '🔺 Show Debug'}
-            </button>
-            <button
-              onClick={loadData}
-              disabled={loading}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#007AFF',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: 'bold',
-                opacity: loading ? 0.6 : 1
-              }}
-            >
-              {loading ? 'Loading...' : '🔄 Refresh'}
-            </button>
-          </div>
+          <button
+            onClick={loadData}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#007AFF',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              opacity: loading ? 0.6 : 1
+            }}
+          >
+            {loading ? 'Loading...' : '🔄 Refresh'}
+          </button>
         </div>
-
-        {/* Debug Panel */}
-        {showDebugPanel && (
-          <div style={{
-            marginBottom: '20px',
-            padding: '15px',
-            backgroundColor: '#1e1e1e',
-            color: '#fff',
-            borderRadius: '8px',
-            maxHeight: '300px',
-            overflowY: 'auto',
-            fontFamily: 'monospace',
-            fontSize: '12px'
-          }}>
-            <div style={{ marginBottom: '10px', fontWeight: 'bold', color: '#007AFF' }}>
-              Debug Console (Last 20 messages)
-            </div>
-            {debugMessages.length === 0 ? (
-              <div style={{ color: '#888' }}>No debug messages yet. Try adding a flat or refreshing.</div>
-            ) : (
-              debugMessages.map((msg, index) => (
-                <div
-                  key={index}
-                  style={{
-                    marginBottom: '8px',
-                    padding: '5px',
-                    backgroundColor: msg.type === 'error' ? '#4a1e1e' :
-                      msg.type === 'warning' ? '#4a3e1e' :
-                        msg.type === 'success' ? '#1e4a1e' : '#1e1e2e',
-                    borderRadius: '4px',
-                    borderLeft: `3px solid ${msg.type === 'error' ? '#ff4444' :
-                      msg.type === 'warning' ? '#ffaa00' :
-                        msg.type === 'success' ? '#44ff44' : '#007AFF'
-                      }`
-                  }}
-                >
-                  <span style={{ color: '#888' }}>[{msg.timestamp}]</span>{' '}
-                  <span style={{
-                    color: msg.type === 'error' ? '#ff8888' :
-                      msg.type === 'warning' ? '#ffcc88' :
-                        msg.type === 'success' ? '#88ff88' : '#fff'
-                  }}>
-                    {msg.message}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        )}
         {loading ? (
           <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
             Loading flats and members data...
