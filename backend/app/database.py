@@ -120,7 +120,10 @@ def create_engine_instance():
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
-            engine_kwargs["connect_args"] = {"ssl": ssl_context}
+            engine_kwargs["connect_args"] = {
+                "ssl": ssl_context,
+                "statement_cache_size": 0  # Disable prepared statements for Supabase transaction pooler
+            }
 
     engine = create_async_engine(database_url, **engine_kwargs)
     
@@ -1334,14 +1337,14 @@ async def seed_sample_templates(db: AsyncSession, society_id: int = 1):
         ('NOC for Move-Out', 'NOC_MOVEOUT', 'moveout', 
          'No Objection Certificate for tenant/owner moving out',
          'This form will be auto-filled with your details. You only need to provide the reason for move-out.',
-         'auto_fill', 1, 
+         'auto_fill', True, 
          '["member_name","flat_number","member_email","member_phone","society_name","society_address","current_date"]',
          NOC_MOVEOUT_HTML,
          '["reason"]', 'file-certificate', 'all', 1),
         ('Move-In Form', 'MOVE_IN_FORM', 'moveout',
          'Form for new tenant/owner moving in',
          'Fill in the move-in details.',
-         'blank_download', 0,
+         'blank_download', False,
          '[]',
          BLANK_TEMPLATE_HTML.replace('{{template_name}}', 'Move-In Form'),
          '[]', 'home-export-outline', 'all', 2),
@@ -1350,7 +1353,7 @@ async def seed_sample_templates(db: AsyncSession, society_id: int = 1):
         ('Monthly Maintenance Bill', 'MAINT_BILL', 'maintenance',
          'Monthly maintenance bill template',
          'Auto-filled with member and billing details. Fill in the amounts.',
-         'auto_fill', 1,
+         'auto_fill', True,
          '["member_name","flat_number","member_email","member_phone","society_name","current_date","current_month","current_year"]',
          MAINTENANCE_BILL_HTML,
          '["maintenance_amount","water_charges","electricity_charges","sinking_fund","total_amount","due_date","society_upi_id","society_bank_details"]',
@@ -1358,7 +1361,7 @@ async def seed_sample_templates(db: AsyncSession, society_id: int = 1):
         ('Payment Receipt', 'PAYMENT_RECEIPT', 'maintenance',
          'Payment receipt template',
          'Generate receipt for maintenance payments.',
-         'blank_download', 0,
+         'blank_download', False,
          '[]',
          BLANK_TEMPLATE_HTML.replace('{{template_name}}', 'Payment Receipt'),
          '[]', 'receipt-outline', 'all', 2),
@@ -1367,7 +1370,7 @@ async def seed_sample_templates(db: AsyncSession, society_id: int = 1):
         ('Complaint Form', 'COMPLAINT_FORM', 'complaints',
          'Form to register complaints and requests',
          'Fill in the complaint details. Your information will be auto-filled.',
-         'auto_fill', 1,
+         'auto_fill', True,
          '["member_name","flat_number","member_email","member_phone","current_date"]',
          COMPLAINT_FORM_HTML,
          '["complaint_category","priority","subject","description","location"]',
@@ -1487,7 +1490,7 @@ async def seed_sample_templates(db: AsyncSession, society_id: int = 1):
         ('Safety Incident Report', 'SAFETY_INCIDENT', 'emergency',
          'Report safety incidents',
          'Fill in incident details.',
-         'blank_download', 0,
+         'blank_download', False,
          '[]',
          BLANK_TEMPLATE_HTML.replace('{{template_name}}', 'Safety Incident Report'),
          '[]', 'warning-outline', 'all', 2),
@@ -1577,8 +1580,8 @@ async def seed_default_data():
                 logger.info("  🌱 Seeding Default Society...")
                 # Create default society
                 await db.execute(text("""
-                    INSERT INTO societies (id, name, address, total_flats, created_at, updated_at)
-                    VALUES (1, 'GharMitra Society', 'Default Address', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    INSERT INTO societies (id, name, address, total_flats, gst_registration_applicable, accounting_type, created_at, updated_at)
+                    VALUES (1, 'GharMitra Society', 'Default Address', 0, FALSE, 'cash', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """))
                 await db.commit()
                 logger.info("  ✓ Created Default Society (ID: 1)")
