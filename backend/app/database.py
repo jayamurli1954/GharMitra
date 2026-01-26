@@ -222,6 +222,9 @@ async def init_db(retries: int = 5, delay: int = 3):
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             
+            # Seed default data (Society and Admin User) - MUST RUN BEFORE MIGRATIONS
+            await seed_default_data()
+            
             # Run migrations to add missing columns
             await migrate_society_fields()
             await migrate_physical_documents()
@@ -232,9 +235,6 @@ async def init_db(retries: int = 5, delay: int = 3):
             await migrate_meeting_management()
             await migrate_template_system()
             await migrate_flats_bedrooms()  # Add bedrooms column to flats table
-            
-            # Seed default data (Society and Admin User)
-            await seed_default_data()
             
             logger.info("✅ Database initialized successfully")
             return  # Success - exit function
@@ -1567,46 +1567,56 @@ async def close_db():
 
 async def seed_default_data():
     """Seed default society and admin user if they don't exist"""
-    from sqlalchemy import text
+    # Use ORM to handle Enums and Defaults correctly
+    from app.models_db import Society, User, UserRole, AccountingType
     from app.utils.security import get_password_hash
+    from sqlalchemy import select
     
     try:
         async with AsyncSessionLocal() as db:
             # 1. Check if Default Society exists
-            result = await db.execute(text("SELECT id FROM societies WHERE id = 1"))
-            society = result.scalar_one_or_none()
+            result = await db.execute(select(Society).where(Society.id == 1))
+            society_exists = result.scalar_one_or_none()
             
-            if not society:
+            if not society_exists:
                 logger.info("  🌱 Seeding Default Society...")
-                # Create default society
-                await db.execute(text("""
-                    INSERT INTO societies (id, name, address, total_flats, gst_registration_applicable, accounting_type, created_at, updated_at)
-                    VALUES (1, 'GharMitra Society', 'Default Address', 0, FALSE, 'cash', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """))
+                default_society = Society(
+                    id=1,
+                    name='GharMitra Society',
+                    address_line='Default Address',
+                    total_flats=0,
+                    gst_registration_applicable=False,
+                    accounting_type=AccountingType.CASH, # Use Enum
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.add(default_society)
                 await db.commit()
                 logger.info("  ✓ Created Default Society (ID: 1)")
             else:
                 logger.info("  - Default Society already exists")
 
             # 2. Check if Admin User exists
-            result = await db.execute(text("SELECT id FROM users WHERE email = 'admin@example.com'"))
+            result = await db.execute(select(User).where(User.email == 'admin@example.com'))
             admin_user = result.scalar_one_or_none()
             
             if not admin_user:
                 logger.info("  🌱 Seeding Admin User...")
                 password_hash = get_password_hash("admin123")
                 
-                # Insert admin user
-                await db.execute(text("""
-                    INSERT INTO users (
-                        society_id, email, password_hash, name, apartment_number, role, 
-                        terms_accepted, privacy_accepted, created_at, updated_at
-                    )
-                    VALUES (
-                        1, 'admin@example.com', :password_hash, 'Admin User', 'ADMIN', 'admin',
-                        TRUE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                    )
-                """), {"password_hash": password_hash})
+                admin_user = User(
+                    society_id=1,
+                    email='admin@example.com',
+                    password_hash=password_hash,
+                    name='Admin User',
+                    apartment_number='ADMIN',
+                    role=UserRole.ADMIN, # Use Enum
+                    terms_accepted=True,
+                    privacy_accepted=True,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.add(admin_user)
                 await db.commit()
                 logger.info("  ✓ Created Admin User (admin@example.com / admin123)")
             else:
