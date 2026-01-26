@@ -83,7 +83,9 @@ AsyncSessionLocal = None
 def get_database_url():
     """Get and normalize database URL - doesn't create connection"""
     database_url = settings.DATABASE_URL
-    if database_url.startswith("postgresql://") and "+asyncpg" not in database_url:
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif database_url.startswith("postgresql://") and "+asyncpg" not in database_url:
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     elif database_url.startswith("postgresql+psycopg2://"):
         # Convert psycopg2 to asyncpg for async operations
@@ -103,11 +105,9 @@ def create_engine_instance():
     database_url = get_database_url()
     
     # Disable prepared statements via URL parameter for robustness (fixes 500 Error with Supabase)
-    if "postgresql" in database_url:
-        separator = "&" if "?" in database_url else "?"
-        if "statement_cache_size" not in database_url:
-            database_url += f"{separator}statement_cache_size=0"
-
+    # Note: connect_args below should handle this, but keeping URL clean is better
+    # Removing manual URL modification to rely on connect_args which is more reliable for types
+    
     # Build engine kwargs
     engine_kwargs = {
         "echo": settings.DATABASE_ECHO,
@@ -115,7 +115,7 @@ def create_engine_instance():
     }
 
     # PostgreSQL-specific settings (including Supabase/Neon)
-    if "postgresql" in database_url:
+    if "postgres" in database_url:
         engine_kwargs.update({
             "pool_pre_ping": True,
             "pool_size": 10,
