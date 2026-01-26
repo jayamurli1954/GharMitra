@@ -101,9 +101,15 @@ def create_engine_instance():
     # Import here to avoid import-time crashes
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
-    import ssl
 
     database_url = get_database_url()
+
+    # Log the database URL (masked for security)
+    if "@" in database_url:
+        masked_url = database_url.split("@")[-1]
+        logger.info(f"Database engine: connecting to ...@{masked_url}")
+    else:
+        logger.info(f"Database engine: {database_url[:50]}...")
 
     # Build engine kwargs
     engine_kwargs = {
@@ -113,29 +119,34 @@ def create_engine_instance():
 
     # PostgreSQL-specific settings (including Supabase/Neon)
     if "postgres" in database_url:
+        logger.info(f"PostgreSQL detected in URL. Configuring for cloud database...")
         # Use NullPool when connecting through external connection poolers (pgbouncer/Supabase)
         # NullPool means SQLAlchemy doesn't maintain its own pool - pgbouncer handles pooling
         engine_kwargs.update({
             "poolclass": NullPool,
         })
-        # SSL + disable prepared statements for cloud PostgreSQL (Supabase/Neon use pgbouncer)
-        if "supabase" in database_url or "neon" in database_url:
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-            engine_kwargs["connect_args"] = {
-                "ssl": ssl_context,
-                "prepared_statement_cache_size": 0,  # Disable SQLAlchemy dialect's prepared stmt cache
-                "statement_cache_size": 0,            # Disable asyncpg's internal prepared stmt LRU cache
-                "prepared_statement_name_func": lambda: "",  # Use UNNAMED prepared stmts (prevents collision through pgbouncer)
-            }
-        else:
-            # Force disable prepared statements for all Postgres connections
-            engine_kwargs["connect_args"] = {
-                "prepared_statement_cache_size": 0,
-                "statement_cache_size": 0,
-                "prepared_statement_name_func": lambda: "",
-            }
+
+        # Base connect_args for all PostgreSQL connections
+        # These disable prepared statements which don't work through pgbouncer
+        connect_args = {
+            "prepared_statement_cache_size": 0,  # Disable SQLAlchemy dialect's prepared stmt cache
+            "statement_cache_size": 0,            # Disable asyncpg's internal prepared stmt LRU cache
+            "prepared_statement_name_func": lambda: "",  # Use UNNAMED prepared stmts (no collision through pgbouncer)
+            "timeout": 30,  # Connection timeout in seconds (asyncpg default is 60)
+            "command_timeout": 30,  # Command execution timeout
+        }
+
+        # SSL for cloud PostgreSQL (Supabase, Neon, Render, or any non-localhost)
+        is_cloud = ("supabase" in database_url or "neon" in database_url
+                    or "render" in database_url or "localhost" not in database_url)
+        if is_cloud:
+            # Use ssl="require" string - simpler and more compatible than SSLContext
+            # This tells asyncpg to use SSL but not verify certificates
+            # (Supabase pgbouncer requires SSL but self-signed certs cause issues with full verification)
+            connect_args["ssl"] = "require"
+            logger.info("  SSL mode: require (cloud database detected)")
+
+        engine_kwargs["connect_args"] = connect_args
 
     engine = create_async_engine(database_url, **engine_kwargs)
 
