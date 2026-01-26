@@ -124,6 +124,9 @@ def create_engine_instance():
                 "ssl": ssl_context,
                 "statement_cache_size": 0  # Disable prepared statements for Supabase transaction pooler
             }
+        else:
+             # Force disable prepared statements for all Postgres connections to be safe with Poolers
+             engine_kwargs["connect_args"] = {"statement_cache_size": 0}
 
     engine = create_async_engine(database_url, **engine_kwargs)
     
