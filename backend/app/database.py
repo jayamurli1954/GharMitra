@@ -230,6 +230,9 @@ async def init_db(retries: int = 5, delay: int = 3):
             await migrate_template_system()
             await migrate_flats_bedrooms()  # Add bedrooms column to flats table
             
+            # Seed default data (Society and Admin User)
+            await seed_default_data()
+            
             logger.info("✅ Database initialized successfully")
             return  # Success - exit function
             
@@ -979,7 +982,7 @@ async def migrate_template_system():
                         category_description TEXT,
                         icon_name VARCHAR(50),
                         display_order INTEGER DEFAULT 0,
-                        is_active INTEGER DEFAULT 1
+                        is_active BOOLEAN DEFAULT TRUE
                     )
                 """))
                 await db.execute(text("CREATE INDEX IF NOT EXISTS idx_categories_code ON template_categories(category_code)"))
@@ -1004,7 +1007,7 @@ async def migrate_template_system():
                     await db.execute(text("""
                         INSERT INTO template_categories (category_code, category_name, category_description, icon_name, display_order, is_active)
                         VALUES (:code, :name, :desc, :icon, :order, :active)
-                    """), {"code": cat_code, "name": cat_name, "desc": cat_desc, "icon": icon, "order": order, "active": 1})
+                    """), {"code": cat_code, "name": cat_name, "desc": cat_desc, "icon": icon, "order": order, "active": True})
                 await db.commit()
                 logger.info("  ✓ Inserted default template categories")
             
@@ -1027,7 +1030,7 @@ async def migrate_template_system():
                         available_to VARCHAR(20) DEFAULT 'all',
                         icon_name VARCHAR(50),
                         display_order INTEGER DEFAULT 0,
-                        is_active INTEGER DEFAULT 1,
+                        is_active BOOLEAN DEFAULT TRUE,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE
@@ -1499,7 +1502,7 @@ async def seed_sample_templates(db: AsyncSession, society_id: int = 1):
             (society_id, template_name, template_code, category, description, 
              instructions, template_type, can_autofill, autofill_fields,
              template_html, template_variables, icon_name, available_to, display_order, is_active, created_at, updated_at)
-            VALUES (:society_id, :name, :code, :cat, :desc, :inst, :ttype, :can_autofill, :autofill_fields, :html, :vars, :icon, :avail, :order, 1, :created_at, :updated_at)
+            VALUES (:society_id, :name, :code, :cat, :desc, :inst, :ttype, :can_autofill, :autofill_fields, :html, :vars, :icon, :avail, :order, TRUE, :created_at, :updated_at)
         """), {
             'society_id': society_id,
             'name': name,
@@ -1559,6 +1562,57 @@ async def close_db():
         logger.error(f"Error closing database connection: {e}")
 
 
+async def seed_default_data():
+    """Seed default society and admin user if they don't exist"""
+    from sqlalchemy import text
+    from app.utils.security import get_password_hash
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            # 1. Check if Default Society exists
+            result = await db.execute(text("SELECT id FROM societies WHERE id = 1"))
+            society = result.scalar_one_or_none()
+            
+            if not society:
+                logger.info("  🌱 Seeding Default Society...")
+                # Create default society
+                await db.execute(text("""
+                    INSERT INTO societies (id, name, address, total_flats, created_at, updated_at)
+                    VALUES (1, 'GharMitra Society', 'Default Address', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """))
+                await db.commit()
+                logger.info("  ✓ Created Default Society (ID: 1)")
+            else:
+                logger.info("  - Default Society already exists")
+
+            # 2. Check if Admin User exists
+            result = await db.execute(text("SELECT id FROM users WHERE email = 'admin@example.com'"))
+            admin_user = result.scalar_one_or_none()
+            
+            if not admin_user:
+                logger.info("  🌱 Seeding Admin User...")
+                password_hash = get_password_hash("admin123")
+                
+                # Insert admin user
+                await db.execute(text("""
+                    INSERT INTO users (
+                        society_id, email, password_hash, name, apartment_number, role, 
+                        terms_accepted, privacy_accepted, created_at, updated_at
+                    )
+                    VALUES (
+                        1, 'admin@example.com', :password_hash, 'Admin User', 'ADMIN', 'admin',
+                        TRUE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                """), {"password_hash": password_hash})
+                await db.commit()
+                logger.info("  ✓ Created Admin User (admin@example.com / admin123)")
+            else:
+                logger.info("  - Admin User already exists")
+                
+    except Exception as e:
+        logger.warning(f"  ⚠ Default data seeding failed: {e}")
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency to get database session
@@ -1578,3 +1632,4 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
