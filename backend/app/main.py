@@ -93,14 +93,13 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None,
 )
 
-# CORS middleware - Allow all origins for Vercel dynamic URLs
-# Note: When allow_credentials=True, cannot use ["*"] - must specify origins
-# For production, use settings.allowed_origins_list or allow all with credentials=False
+# CORS middleware - Allow all origins for Vercel dynamic deployment URLs
+# Using allow_origins=["*"] with allow_credentials=False since Vercel generates
+# dynamic URLs (gharmitra-xxx-yyy.vercel.app) that can't be predicted
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https://gharmitra.*\.vercel\.app|http://localhost:\d+",
-    allow_origins=["https://gharmitra.vercel.app"], # Main production domain
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],

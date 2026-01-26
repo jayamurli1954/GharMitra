@@ -100,14 +100,11 @@ def create_engine_instance():
 
     # Import here to avoid import-time crashes
     from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
     import ssl
 
     database_url = get_database_url()
-    
-    # Disable prepared statements via URL parameter for robustness (fixes 500 Error with Supabase)
-    # Note: connect_args below should handle this, but keeping URL clean is better
-    # Removing manual URL modification to rely on connect_args which is more reliable for types
-    
+
     # Build engine kwargs
     engine_kwargs = {
         "echo": settings.DATABASE_ECHO,
@@ -116,33 +113,39 @@ def create_engine_instance():
 
     # PostgreSQL-specific settings (including Supabase/Neon)
     if "postgres" in database_url:
+        # Use NullPool when connecting through external connection poolers (pgbouncer/Supabase)
+        # This prevents SQLAlchemy from maintaining its own pool on top of pgbouncer,
+        # which causes DuplicatePreparedStatementError
         engine_kwargs.update({
             "pool_pre_ping": True,
-            "pool_size": 10,
-            "max_overflow": 20,
+            "poolclass": NullPool,
         })
-        # SSL required for cloud PostgreSQL (Supabase, Neon, etc.)
+        # SSL + disable prepared statements for cloud PostgreSQL
         if "supabase" in database_url or "neon" in database_url:
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
             engine_kwargs["connect_args"] = {
                 "ssl": ssl_context,
-                "statement_cache_size": 0  # Disable prepared statements for Supabase transaction pooler
+                "prepared_statement_cache_size": 0,  # asyncpg native param - disables prepared stmt cache
+                "statement_cache_size": 0,  # Belt-and-suspenders: also set the older param name
             }
         else:
-             # Force disable prepared statements for all Postgres connections to be safe with Poolers
-             engine_kwargs["connect_args"] = {"statement_cache_size": 0}
+            # Force disable prepared statements for all Postgres connections
+            engine_kwargs["connect_args"] = {
+                "prepared_statement_cache_size": 0,
+                "statement_cache_size": 0,
+            }
 
     engine = create_async_engine(database_url, **engine_kwargs)
-    
+
     # Create async session factory
     AsyncSessionLocal = async_sessionmaker(
         engine,
         class_=AsyncSession,
         expire_on_commit=False,
     )
-    
+
     return engine
 
 # Import models so they're registered with Base (must be after Base is defined)
@@ -889,9 +892,10 @@ async def migrate_meeting_management():
             
             # Create meeting_attendance table if it doesn't exist
             if not await table_exists(db, "meeting_attendance"):
-                await db.execute(text("""
+                pk_syntax = get_autoincrement_syntax()
+                await db.execute(text(f"""
                     CREATE TABLE meeting_attendance (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id {pk_syntax},
                         meeting_id INTEGER NOT NULL,
                         society_id INTEGER NOT NULL,
                         member_id INTEGER NOT NULL,
@@ -902,7 +906,7 @@ async def migrate_meeting_management():
                         proxy_holder_name VARCHAR(100),
                         arrival_time VARCHAR(20),
                         departure_time VARCHAR(20),
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
                         FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
                         FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
@@ -916,9 +920,10 @@ async def migrate_meeting_management():
             
             # Create meeting_resolutions table if it doesn't exist
             if not await table_exists(db, "meeting_resolutions"):
-                await db.execute(text("""
+                pk_syntax = get_autoincrement_syntax()
+                await db.execute(text(f"""
                     CREATE TABLE meeting_resolutions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id {pk_syntax},
                         meeting_id INTEGER NOT NULL,
                         society_id INTEGER NOT NULL,
                         resolution_number VARCHAR(50) NOT NULL UNIQUE,
@@ -937,7 +942,7 @@ async def migrate_meeting_management():
                         assigned_to VARCHAR(100),
                         due_date DATE,
                         implementation_status VARCHAR(20) DEFAULT 'pending',
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
                         FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
                         FOREIGN KEY (proposed_by_id) REFERENCES members(id),
@@ -952,16 +957,17 @@ async def migrate_meeting_management():
             
             # Create meeting_votes table if it doesn't exist
             if not await table_exists(db, "meeting_votes"):
-                await db.execute(text("""
+                pk_syntax = get_autoincrement_syntax()
+                await db.execute(text(f"""
                     CREATE TABLE meeting_votes (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id {pk_syntax},
                         resolution_id INTEGER NOT NULL,
                         meeting_id INTEGER NOT NULL,
                         society_id INTEGER NOT NULL,
                         member_id INTEGER NOT NULL,
                         member_name VARCHAR(100) NOT NULL,
                         vote VARCHAR(20) NOT NULL,
-                        voted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (resolution_id) REFERENCES meeting_resolutions(id) ON DELETE CASCADE,
                         FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
                         FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
@@ -986,9 +992,10 @@ async def migrate_template_system():
 
             # Create template_categories table if it doesn't exist
             if not await table_exists(db, "template_categories"):
-                await db.execute(text("""
+                pk_syntax = get_autoincrement_syntax()
+                await db.execute(text(f"""
                     CREATE TABLE template_categories (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id {pk_syntax},
                         category_code VARCHAR(50) NOT NULL UNIQUE,
                         category_name VARCHAR(100) NOT NULL,
                         category_description TEXT,
@@ -1025,9 +1032,10 @@ async def migrate_template_system():
             
             # Create document_templates table if it doesn't exist
             if not await table_exists(db, "document_templates"):
-                await db.execute(text("""
+                pk_syntax = get_autoincrement_syntax()
+                await db.execute(text(f"""
                     CREATE TABLE document_templates (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id {pk_syntax},
                         society_id INTEGER NOT NULL DEFAULT 1,
                         template_name VARCHAR(200) NOT NULL,
                         template_code VARCHAR(50) NOT NULL UNIQUE,
@@ -1043,8 +1051,8 @@ async def migrate_template_system():
                         icon_name VARCHAR(50),
                         display_order INTEGER DEFAULT 0,
                         is_active BOOLEAN DEFAULT TRUE,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE
                     )
                 """))
@@ -1057,14 +1065,15 @@ async def migrate_template_system():
             
             # Create template_usage_log table if it doesn't exist
             if not await table_exists(db, "template_usage_log"):
-                await db.execute(text("""
+                pk_syntax = get_autoincrement_syntax()
+                await db.execute(text(f"""
                     CREATE TABLE template_usage_log (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id {pk_syntax},
                         template_id INTEGER NOT NULL,
                         template_code VARCHAR(50) NOT NULL,
                         society_id INTEGER NOT NULL,
                         member_id INTEGER NOT NULL,
-                        generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         platform VARCHAR(20),
                         FOREIGN KEY (template_id) REFERENCES document_templates(id) ON DELETE CASCADE,
                         FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
