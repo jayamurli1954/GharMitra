@@ -114,27 +114,27 @@ def create_engine_instance():
     # PostgreSQL-specific settings (including Supabase/Neon)
     if "postgres" in database_url:
         # Use NullPool when connecting through external connection poolers (pgbouncer/Supabase)
-        # This prevents SQLAlchemy from maintaining its own pool on top of pgbouncer,
-        # which causes DuplicatePreparedStatementError
+        # NullPool means SQLAlchemy doesn't maintain its own pool - pgbouncer handles pooling
         engine_kwargs.update({
-            "pool_pre_ping": True,
             "poolclass": NullPool,
         })
-        # SSL + disable prepared statements for cloud PostgreSQL
+        # SSL + disable prepared statements for cloud PostgreSQL (Supabase/Neon use pgbouncer)
         if "supabase" in database_url or "neon" in database_url:
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
             engine_kwargs["connect_args"] = {
                 "ssl": ssl_context,
-                "prepared_statement_cache_size": 0,  # asyncpg native param - disables prepared stmt cache
-                "statement_cache_size": 0,  # Belt-and-suspenders: also set the older param name
+                "prepared_statement_cache_size": 0,  # Disable SQLAlchemy dialect's prepared stmt cache
+                "statement_cache_size": 0,            # Disable asyncpg's internal prepared stmt LRU cache
+                "prepared_statement_name_func": lambda: "",  # Use UNNAMED prepared stmts (prevents collision through pgbouncer)
             }
         else:
             # Force disable prepared statements for all Postgres connections
             engine_kwargs["connect_args"] = {
                 "prepared_statement_cache_size": 0,
                 "statement_cache_size": 0,
+                "prepared_statement_name_func": lambda: "",
             }
 
     engine = create_async_engine(database_url, **engine_kwargs)
