@@ -101,6 +101,12 @@ def create_engine_instance():
     import ssl
 
     database_url = get_database_url()
+    
+    # Disable prepared statements via URL parameter for robustness (fixes 500 Error with Supabase)
+    if "postgresql" in database_url:
+        separator = "&" if "?" in database_url else "?"
+        if "statement_cache_size" not in database_url:
+            database_url += f"{separator}statement_cache_size=0"
 
     # Build engine kwargs
     engine_kwargs = {
