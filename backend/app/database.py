@@ -90,6 +90,13 @@ def get_database_url():
     elif database_url.startswith("postgresql+psycopg2://"):
         # Convert psycopg2 to asyncpg for async operations
         database_url = database_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+    if "sslmode=" in database_url:
+        # asyncpg doesn't accept sslmode in URL; SSL is handled in connect_args
+        from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+
+        parts = urlsplit(database_url)
+        query = [(k, v) for (k, v) in parse_qsl(parts.query) if k.lower() != "sslmode"]
+        database_url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
     return database_url
 
 def create_engine_instance():
