@@ -93,13 +93,19 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None,
 )
 
-# CORS middleware - Allow all origins for Vercel dynamic deployment URLs
-# Using allow_origins=["*"] with allow_credentials=False since Vercel generates
-# dynamic URLs (gharmitra-xxx-yyy.vercel.app) that can't be predicted
+# CORS middleware - allow Vercel deployments + local dev
+# Use allow_origin_regex to match gharmitra.vercel.app and preview URLs
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://gharmitra.vercel.app",
+    ],
+    allow_origin_regex=r"^https://gharmitra(-.*)?\.vercel\.app$",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -186,8 +192,6 @@ app.include_router(move_governance.router, prefix="/api/move-governance", tags=[
 app.include_router(attachments.router, prefix="/api/attachments", tags=["Voucher Attachments"])
 app.include_router(assets.router, prefix="/api/assets", tags=["Assets"])
 app.include_router(db_mgmt.router, prefix="/api/database", tags=["Database Management"])
-
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
