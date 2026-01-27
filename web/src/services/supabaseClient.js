@@ -3,8 +3,16 @@
  */
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+const supabaseUrl =
+  (typeof process !== 'undefined' &&
+    process.env &&
+    process.env.REACT_APP_SUPABASE_URL) ||
+  (typeof window !== 'undefined' && window.__SUPABASE_URL__);
+const supabaseAnonKey =
+  (typeof process !== 'undefined' &&
+    process.env &&
+    process.env.REACT_APP_SUPABASE_ANON_KEY) ||
+  (typeof window !== 'undefined' && window.__SUPABASE_ANON_KEY__);
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase env vars missing: REACT_APP_SUPABASE_URL / REACT_APP_SUPABASE_ANON_KEY');
