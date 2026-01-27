@@ -31,7 +31,9 @@ const LoginScreen = ({ onLoginSuccess }) => {
     } catch (err) {
       let errorMessage = 'Login failed. Please try again.';
 
-      if (err.response) {
+      if (err.name === 'SupabaseAuthError') {
+        errorMessage = err.message || errorMessage;
+      } else if (err.response) {
         const status = err.response.status;
         const detail = err.response.data?.detail || err.response.data?.message;
 

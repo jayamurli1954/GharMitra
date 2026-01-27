@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # Deployment Mode: "standalone" (local installation) or "saas" (cloud-hosted)
     DEPLOYMENT_MODE: str = "saas"  # Default to SaaS mode
 
+    # Supabase Auth (for web login)
+    SUPABASE_URL: str = ""
+    SUPABASE_JWT_AUD: str = "authenticated"
+
     # Logging
     LOG_LEVEL: str = "INFO"
 

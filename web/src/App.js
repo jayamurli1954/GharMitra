@@ -27,6 +27,9 @@ import ComplaintsScreen from './screens/ComplaintsScreen';
 import AssetRegisterScreen from './screens/AssetRegisterScreen';
 import AddAssetScreen from './screens/AddAssetScreen';
 import AssetDetailScreen from './screens/AssetDetailScreen';
+import SocietySearchScreen from './screens/SocietySearchScreen';
+import JoinRequestsScreen from './screens/JoinRequestsScreen';
+import MyMembershipsScreen from './screens/MyMembershipsScreen';
 
 const MobileNav = () => {
   const location = useLocation();
@@ -95,7 +98,11 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-    checkAuthStatus();
+    const initializeAuth = async () => {
+      await authService.initAuthListener();
+      await checkAuthStatus();
+    };
+    initializeAuth();
   }, [checkAuthStatus]);
 
   if (initializing) {
@@ -127,6 +134,9 @@ const App = () => {
               <Route path="/assets" element={<AssetRegisterScreen />} />
               <Route path="/assets/add" element={<AddAssetScreen />} />
               <Route path="/assets/:asset_id" element={<AssetDetailScreen />} />
+              <Route path="/onboarding/search" element={<SocietySearchScreen />} />
+              <Route path="/onboarding/requests" element={<JoinRequestsScreen />} />
+              <Route path="/onboarding/memberships" element={<MyMembershipsScreen />} />
               <Route path="/settings" element={<SettingsScreen />} />
               <Route path="/profile" element={<ProfileScreen />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />

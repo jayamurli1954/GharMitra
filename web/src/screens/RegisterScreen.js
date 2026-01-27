@@ -14,7 +14,6 @@ const RegisterScreen = ({ onRegisterSuccess }) => {
     confirmPassword: '',
     apartment_number: '',
     phone_number: '',
-    role: 'member',
     terms_accepted: false,
     privacy_accepted: false,
   });
@@ -62,7 +61,6 @@ const RegisterScreen = ({ onRegisterSuccess }) => {
         password: formData.password,
         apartment_number: formData.apartment_number,
         phone_number: formData.phone_number || undefined,
-        role: formData.role,
         terms_accepted: formData.terms_accepted,
         privacy_accepted: formData.privacy_accepted,
       };
@@ -76,7 +74,9 @@ const RegisterScreen = ({ onRegisterSuccess }) => {
     } catch (err) {
       let errorMessage = 'Registration failed. Please try again.';
 
-      if (err.response) {
+      if (err.name === 'SupabaseAuthError') {
+        errorMessage = err.message || errorMessage;
+      } else if (err.response) {
         const detail = err.response.data?.detail || err.response.data?.message;
         errorMessage = detail || errorMessage;
       } else if (err.message) {
@@ -189,19 +189,6 @@ const RegisterScreen = ({ onRegisterSuccess }) => {
               autoComplete="new-password"
               required
             />
-          </div>
-
-          <div className="login-input-container">
-            <label className="login-label">Role</label>
-            <select
-              name="role"
-              className="login-input"
-              value={formData.role}
-              onChange={handleChange}
-            >
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
-            </select>
           </div>
 
           <div style={{ marginBottom: '15px' }}>

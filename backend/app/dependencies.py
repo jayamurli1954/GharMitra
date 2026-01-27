@@ -9,8 +9,10 @@ from sqlalchemy import select, and_
 
 from app.database import get_db
 from app.utils.security import decode_access_token
+from app.utils.supabase_auth import verify_supabase_jwt, SupabaseJWTError
 from app.models.user import UserResponse, UserRole
 from app.models_db import User
+from app.config import settings
 
 # HTTP Bearer token scheme
 security = HTTPBearer()
@@ -39,32 +41,51 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    # Decode token
     token = credentials.credentials
-    payload = decode_access_token(token)
 
-    if payload is None:
-        raise credentials_exception
+    user = None
+    # 1) Try Supabase JWT (RS256)
+    if settings.SUPABASE_URL:
+        try:
+            supa_payload = verify_supabase_jwt(token, settings.SUPABASE_URL, settings.SUPABASE_JWT_AUD)
+            email = supa_payload.get("email")
+            if email:
+                try:
+                    result = await db.execute(select(User).where(User.email == email))
+                    user = result.scalar_one_or_none()
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Error fetching user from database: {e}")
+                    raise credentials_exception
+        except SupabaseJWTError:
+            user = None
 
-    user_id_str: str = payload.get("sub")
-    if user_id_str is None:
-        raise credentials_exception
+    # 2) Fallback to legacy JWT (HS256)
+    if user is None:
+        payload = decode_access_token(token)
+        if payload is None:
+            raise credentials_exception
 
-    # Convert user_id to integer
-    try:
-        user_id = int(user_id_str)
-    except (ValueError, TypeError):
-        raise credentials_exception
+        user_id_str: str = payload.get("sub")
+        if user_id_str is None:
+            raise credentials_exception
 
-    # Get user from database using SQLAlchemy
-    try:
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error fetching user from database: {e}")
-        raise credentials_exception
+        # Convert user_id to integer
+        try:
+            user_id = int(user_id_str)
+        except (ValueError, TypeError):
+            raise credentials_exception
+
+        # Get user from database using SQLAlchemy
+        try:
+            result = await db.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error fetching user from database: {e}")
+            raise credentials_exception
 
     if user is None:
         raise credentials_exception

@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.models.user import UserCreate, UserLogin, Token, UserResponse, UserProfileUpdate
 from app.utils.security import get_password_hash, verify_password, create_access_token
 from app.database import get_db
-from app.models_db import User, Society
+from app.models_db import User, Society, UserRole
 from app.dependencies import get_current_user
 from app.config import settings
 
@@ -72,12 +72,13 @@ async def register(user_data: UserCreate, request: Request, db: AsyncSession = D
         client_ip = request.headers.get("x-forwarded-for").split(",")[0].strip()
 
     # Create user
+    # Public registration is always a resident (admin promotion handled separately)
     new_user = User(
         email=user_data.email,
         password_hash=hashed_password,
         name=user_data.name,
         apartment_number=user_data.apartment_number,
-        role=user_data.role,
+        role=UserRole.RESIDENT,
         phone_number=user_data.phone_number,
         # Legal consent fields (DPDP Act 2023 compliance)
         terms_accepted=user_data.terms_accepted,
@@ -131,6 +132,10 @@ async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)):
 
     Returns JWT access token and user information
     """
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Login moved to Supabase Auth. Use Supabase to authenticate.",
+    )
     # Find user by email
     result = await db.execute(select(User).where(User.email == credentials.email))
     user = result.scalar_one_or_none()
