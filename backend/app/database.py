@@ -238,6 +238,10 @@ async def init_db(retries: int = 5, delay: int = 3):
 
     # Create engine instance (lazy initialization - not at import time)
     create_engine_instance(database_url)
+    if "pooler.supabase.com" in (database_url or ""):
+        logger.info("DB connection mode: supabase pooler (session)")
+    elif "db." in (database_url or "") and ".supabase.co" in (database_url or ""):
+        logger.info("DB connection mode: supabase direct")
     
     for attempt in range(1, retries + 1):
         try:
