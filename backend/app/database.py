@@ -332,6 +332,13 @@ async def init_db(retries: int = 5, delay: int = 3):
             
         except SQLAlchemyError as e:
             if fallback_database_url and database_url != fallback_database_url and "timeout" in str(e).lower():
+                logger.warning("  WARNING: Pooler timeout detected. Switching to direct Supabase host (5432) and retrying...")
+                database_url = fallback_database_url
+                settings.DATABASE_URL = database_url
+                await recreate_engine(database_url)
+                continue
+
+            if fallback_database_url and database_url != fallback_database_url and "timeout" in str(e).lower():
                 logger.warning("  ⚠ Pooler connection timed out. Switching to direct Supabase host (5432) and retrying...")
                 database_url = fallback_database_url
                 settings.DATABASE_URL = database_url
