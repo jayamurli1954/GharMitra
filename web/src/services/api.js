@@ -13,8 +13,8 @@ const getApiUrl = () => {
   }
 
   // Production / Building for Cloud (Priority 1)
-  if (process.env.REACT_APP_API_URL) {
-    return process.env.REACT_APP_API_URL;
+  if (import.meta?.env?.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
   }
 
   // Runtime Environment Variable injection (Priority 2)

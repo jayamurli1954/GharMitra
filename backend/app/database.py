@@ -10,6 +10,7 @@ import logging
 import shutil
 import os
 from datetime import datetime
+from urllib.parse import urlparse, urlunparse, quote
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ Base = declarative_base()
 
 # Global engine and session factory (initialized lazily in init_db)
 engine = None
+engine_url = None
 AsyncSessionLocal = None
 
 def get_database_url():
@@ -99,9 +101,9 @@ def get_database_url():
         database_url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
     return database_url
 
-def create_engine_instance():
+def create_engine_instance(database_url_override=None):
     """Create engine instance - called during init_db, not at import time"""
-    global engine, AsyncSessionLocal
+    global engine, engine_url, AsyncSessionLocal
     if engine is not None:
         return engine  # Already created
 
@@ -109,7 +111,8 @@ def create_engine_instance():
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    database_url = get_database_url()
+    database_url = database_url_override or get_database_url()
+    engine_url = database_url
 
     # Log the database URL (masked for security)
     if "@" in database_url:
@@ -166,6 +169,63 @@ def create_engine_instance():
 
     return engine
 
+
+async def recreate_engine(database_url: str):
+    """Dispose the current engine and recreate with a new URL (used for fallbacks)."""
+    global engine, engine_url, AsyncSessionLocal
+    if engine is not None:
+        try:
+            await engine.dispose()
+        except Exception as e:
+            # If pooler timed out, try direct Supabase host once
+            if fallback_database_url and database_url != fallback_database_url and isinstance(
+                e, (TimeoutError, asyncio.TimeoutError)
+            ):
+                logger.warning("  ⚠ Pooler connection timed out. Switching to direct Supabase host (5432) and retrying...")
+                database_url = fallback_database_url
+                settings.DATABASE_URL = database_url
+                await recreate_engine(database_url)
+                continue
+            logger.warning(f"  ⚠ Could not dispose existing engine: {e}")
+    engine = None
+    engine_url = None
+    AsyncSessionLocal = None
+    return create_engine_instance(database_url)
+
+
+def get_direct_supabase_url(database_url: str) -> str | None:
+    """
+    If using Supabase pooler URL, derive the direct DB host URL as a fallback.
+    Example pooler: ...@aws-1-ap-south-1.pooler.supabase.com:6543/postgres
+    Direct host: db.<project-ref>.supabase.co:5432
+    """
+    try:
+        parsed = urlparse(database_url)
+        if not parsed.hostname or "pooler.supabase.com" not in parsed.hostname:
+            return None
+
+        username = parsed.username or ""
+        if not username.startswith("postgres."):
+            return None
+
+        project_ref = username.split("postgres.", 1)[1]
+        if not project_ref:
+            return None
+
+        # Preserve credentials and query string, swap host/port
+        direct_username = "postgres"
+        user = quote(direct_username, safe="._-")
+        password = quote(parsed.password or "", safe="")
+        userinfo = user
+        if parsed.password is not None:
+            userinfo = f"{user}:{password}"
+
+        netloc = f"{userinfo}@db.{project_ref}.supabase.co:5432"
+        path = parsed.path or "/postgres"
+        return urlunparse((parsed.scheme, netloc, path, parsed.params, parsed.query, parsed.fragment))
+    except Exception:
+        return None
+
 # Import models so they're registered with Base (must be after Base is defined)
 # This ensures all tables are created when init_db() is called
 def import_models():
@@ -182,9 +242,13 @@ async def init_db(retries: int = 5, delay: int = 3):
     """
     import asyncio
     from sqlalchemy.exc import SQLAlchemyError
-    
+
+    # Prefer pooler URL if provided; fall back to direct host on timeout
+    database_url = get_database_url()
+    fallback_database_url = get_direct_supabase_url(database_url)
+
     # Create engine instance (lazy initialization - not at import time)
-    create_engine_instance()
+    create_engine_instance(database_url)
     
     for attempt in range(1, retries + 1):
         try:
@@ -194,21 +258,20 @@ async def init_db(retries: int = 5, delay: int = 3):
             # 1. Test database connection first (important for cloud deployments)
             try:
                 # Log the host we are trying to connect to (for debugging)
-                from urllib.parse import urlparse
                 try:
-                    # Clean/safe parsing of the URL
-                    db_url_parts = settings.DATABASE_URL.split("@")
-                    if len(db_url_parts) > 1:
-                        # Get user part (before @, after //)
-                        user_pass = db_url_parts[0].split("//")[1]
-                        if ":" in user_pass:
-                            username = user_pass.split(":")[0]
-                        else:
-                            username = user_pass
-                        
-                        host_port = db_url_parts[1]
+                    from urllib.parse import urlsplit
+                    parsed = urlsplit(database_url)
+                    username = parsed.username or ""
+                    host = parsed.hostname or ""
+                    port = parsed.port or ""
+                    db_name = parsed.path.lstrip("/")
+                    if username:
                         logger.info(f"Attempting DB connection as USER: '{username}'")
+                    if host:
+                        host_port = f"{host}:{port}/{db_name}" if port else f"{host}/{db_name}"
                         logger.info(f"Connecting to HOST: '{host_port}'")
+                    if "pooler.supabase.com" in (host or "") and "." not in username:
+                        logger.warning("⚠ Supabase pooler detected: username should be 'postgres.<project_ref>'")
                 except Exception as parse_err:
                     logger.info(f"Attempting to connect to DB (url parsing failed: {parse_err})")
 
@@ -221,6 +284,11 @@ async def init_db(retries: int = 5, delay: int = 3):
                     logger.error("🛑 NETWORK ERROR: Cannot reach database.")
                     logger.error("👉 SUGGESTION: If using Supabase, update DATABASE_URL to use the CONNECTION POOLER (port 6543).")
                     logger.error("   Example: postgresql://user.proj:pass@aws-0-ap-south-1.pooler.supabase.com:6543/postgres")
+                if "password authentication failed" in error_str or "InvalidPasswordError" in error_str:
+                    logger.error("🛑 AUTH ERROR: Database password rejected.")
+                    logger.error("👉 SUGGESTION: Double-check DATABASE_URL credentials.")
+                    logger.error("   - Use Supabase pooler user: postgres.<project_ref>")
+                    logger.error("   - URL-encode special characters in the password")
                 raise e
             
             # 2. Database optimizations
@@ -270,6 +338,12 @@ async def init_db(retries: int = 5, delay: int = 3):
             return  # Success - exit function
             
         except SQLAlchemyError as e:
+            if fallback_database_url and database_url != fallback_database_url and "timeout" in str(e).lower():
+                logger.warning("  ⚠ Pooler connection timed out. Switching to direct Supabase host (5432) and retrying...")
+                database_url = fallback_database_url
+                settings.DATABASE_URL = database_url
+                await recreate_engine(database_url)
+                continue
             logger.warning(f"⚠️ Database connection failed (attempt {attempt}/{retries}): {e}")
             if attempt < retries:
                 logger.info(f"  Retrying in {delay} seconds...")
@@ -1681,4 +1755,3 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
-
