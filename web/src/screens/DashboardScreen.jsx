@@ -241,6 +241,30 @@ const DashboardScreen = () => {
 
               <button
                 className="dashboard-quick-tile"
+                onClick={() => navigate('/onboarding/search')}
+              >
+                <span className="dashboard-quick-tile-icon">🔎</span>
+                <p className="dashboard-quick-tile-label">Find Society</p>
+              </button>
+
+              <button
+                className="dashboard-quick-tile"
+                onClick={() => navigate('/onboarding/memberships')}
+              >
+                <span className="dashboard-quick-tile-icon">🧾</span>
+                <p className="dashboard-quick-tile-label">My Memberships</p>
+              </button>
+
+              <button
+                className="dashboard-quick-tile"
+                onClick={() => navigate('/onboarding/requests')}
+              >
+                <span className="dashboard-quick-tile-icon">✅</span>
+                <p className="dashboard-quick-tile-label">Join Requests</p>
+              </button>
+
+              <button
+                className="dashboard-quick-tile"
                 onClick={() => navigate('/complaints')}
               >
                 <span className="dashboard-quick-tile-icon">🛠️</span>

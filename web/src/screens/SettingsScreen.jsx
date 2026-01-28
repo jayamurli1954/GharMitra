@@ -3756,69 +3756,45 @@ const DataSecurityTab = () => {
   );
 };
 
-const MultiSocietyTab = () => (
-  <div className="settings-tab-content">
-    <h2 className="settings-tab-title">🌐 Multi-Society Mode</h2>
-    <p className="settings-tab-description">Manage multiple societies (SaaS mode)</p>
+const MultiSocietyTab = () => {
+  const navigate = useNavigate();
 
-    <div className="settings-section">
-      <h3>Current Society</h3>
-      <div className="settings-form-group">
-        <label>Active Society</label>
-        <select>
-          <option>GreenView Apartments</option>
-          <option>Sunshine Residency</option>
-          <option>Garden Heights</option>
-        </select>
-        <button className="settings-action-btn">Switch Society</button>
-      </div>
-    </div>
+  return (
+    <div className="settings-tab-content">
+      <h2 className="settings-tab-title">🌐 Multi-Society Mode</h2>
+      <p className="settings-tab-description">Search societies, manage memberships, and approvals</p>
 
-    <div className="settings-section">
-      <h3>Society Isolation</h3>
-      <div className="settings-checkbox-group">
-        <label className="settings-checkbox">
-          <input type="checkbox" defaultChecked />
-          <span>Enable data isolation between societies</span>
-        </label>
-        <label className="settings-checkbox">
-          <input type="checkbox" />
-          <span>Allow cross-society user access</span>
-        </label>
-      </div>
-    </div>
-
-    <div className="settings-section">
-      <h3>Subscription Plan</h3>
-      <div className="settings-form-row">
-        <div className="settings-form-group">
-          <label>Current Plan</label>
-          <input type="text" readOnly value="Premium" />
-        </div>
-        <div className="settings-form-group">
-          <label>Storage Used</label>
-          <input type="text" readOnly value="2.5 GB / 10 GB" />
+      <div className="settings-section">
+        <h3>Member Actions</h3>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button className="settings-action-btn" onClick={() => navigate('/onboarding/search')}>
+            🔎 Search Society & Join
+          </button>
+          <button className="settings-action-btn" onClick={() => navigate('/onboarding/memberships')}>
+            🧾 My Memberships
+          </button>
         </div>
       </div>
-      <div className="settings-form-row">
-        <div className="settings-form-group">
-          <label>User Limit</label>
-          <input type="text" readOnly value="50 / 100 users" />
-        </div>
-        <div className="settings-form-group">
-          <label>Renewal Date</label>
-          <input type="text" readOnly value="2026-02-01" />
-        </div>
-      </div>
-      <button className="settings-action-btn">Upgrade Plan</button>
-    </div>
 
-    <div className="settings-section">
-      <h3>Add New Society</h3>
-      <button className="settings-add-btn">+ Create New Society</button>
+      <div className="settings-section">
+        <h3>Admin Actions</h3>
+        <p style={{ color: '#666', marginBottom: '12px' }}>
+          Approve or reject join requests for your society.
+        </p>
+        <button className="settings-action-btn" onClick={() => navigate('/onboarding/requests')}>
+          ✅ Review Join Requests
+        </button>
+      </div>
+
+      <div className="settings-section">
+        <h3>Society Switching</h3>
+        <p style={{ color: '#666' }}>
+          Society switching UI will be enabled after memberships are approved.
+        </p>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default SettingsScreen;
 

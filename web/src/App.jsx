@@ -8,6 +8,7 @@ import './styles.css';
 
 // Auth Service (web-compatible)
 import { authService } from './services/authService';
+import { supabaseEnabled } from './services/supabaseClient';
 
 // Web-compatible screens
 import LoginScreen from './screens/LoginScreen';
@@ -114,6 +115,12 @@ const App = () => {
 
   return (
     <Router>
+        {!supabaseEnabled && (
+          <div className="env-warning-banner">
+            Supabase is not configured. Set VITE_SUPABASE_URL and
+            VITE_SUPABASE_ANON_KEY in Vercel env vars to enable login.
+          </div>
+        )}
         {user && <MobileNav />}
         <Routes>
           {user ? (
