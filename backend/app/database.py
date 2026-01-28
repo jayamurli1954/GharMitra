@@ -177,22 +177,11 @@ async def recreate_engine(database_url: str):
         try:
             await engine.dispose()
         except Exception as e:
-            # If pooler timed out, try direct Supabase host once
-            if fallback_database_url and database_url != fallback_database_url and isinstance(
-                e, (TimeoutError, asyncio.TimeoutError)
-            ):
-                logger.warning("  ⚠ Pooler connection timed out. Switching to direct Supabase host (5432) and retrying...")
-                database_url = fallback_database_url
-                settings.DATABASE_URL = database_url
-                await recreate_engine(database_url)
-                continue
             logger.warning(f"  ⚠ Could not dispose existing engine: {e}")
     engine = None
     engine_url = None
     AsyncSessionLocal = None
     return create_engine_instance(database_url)
-
-
 def get_direct_supabase_url(database_url: str) -> str | None:
     """
     If using Supabase pooler URL, derive the direct DB host URL as a fallback.
